@@ -1,0 +1,132 @@
+# instruments 2026-09-01T173005Z
+hypothesis: queue item 3 - where the idle 25% of the cores goes, and what the fold actually spends its CPU on
+note:     ONE binary configuration instrumented, not N arms ranked, so E-17's slot bias does not apply; the machine was made quiet first (the orphaned item-15 invocation killed at 19:25)
+commit:   3379b71a11d02dd8b8a6d9773bf37d8488ef0632
+go:       go version go1.27.0 darwin/arm64
+machine:  Apple M5 Pro, hw.ncpu 15, 24 GiB, 26.5.2 arm64
+hyperfine: hyperfine 1.20.0
+power:    'AC Power'  present: true
+load:     19:30  up 1 day,  9:49, 19 users, load averages: 12.79 7.10 4.61
+
+--- phases run 1: bin/1brc -phases -in measurements-1b.txt ---
+phases: workers=20 chunks=3300 read=15.96352163s fold=1m21.234900189s read/(read+fold)=16.4%
+phases: worker wall min=4.684305291s p50=4.895103s max=5.018801375s sum=1m37.692397209s skew(max/min)=1.071 merge=13.069583ms
+real 5.06
+user 38.52
+sys 4.91
+--- phases run 2: bin/1brc -phases -in measurements-1b.txt ---
+phases: workers=20 chunks=3300 read=11.505695985s fold=1m16.46500066s read/(read+fold)=13.1%
+phases: worker wall min=4.277223s p50=4.394336833s max=4.549222333s sum=1m28.200060457s skew(max/min)=1.064 merge=9.536625ms
+real 4.57
+user 34.37
+sys 4.29
+--- phases run 3: bin/1brc -phases -in measurements-1b.txt ---
+phases: workers=20 chunks=3300 read=11.379613229s fold=1m15.567195806s read/(read+fold)=13.1%
+phases: worker wall min=4.079816375s p50=4.385184958s max=4.514210584s sum=1m27.10172279s skew(max/min)=1.106 merge=12.413125ms
+real 4.54
+user 34.50
+sys 4.26
+
+*** THE THREE RUNS ABOVE ARE NOT A VERDICT EITHER. ***
+`pmset` flipped to AC power between the first attempt and this one, and macOS answers a charger by
+starting its plugged-in housekeeping: `backupd` + `backupd-helper`, Spotlight's `mdbulkimport` and
+`mdworker_shared`, and a burst of WorkflowKit / siriactionsd / ModelCatalogAgent at 56%, 23% and 24%
+CPU, on top of the resident Microsoft Defender trio (~58% combined) and a Virtualization.framework
+VM (13%). One-minute load average was 12.79 on 15 cores. The same binary that had just measured
+1.56 s took 4.54-5.06 s, and user CPU rose from 18.56 s to 34.37-38.52 s for byte-identical work.
+
+$ ps -Ao pid,pcpu,comm -r | head -8
+  PID  %CPU COMM
+66492  56.6 WorkflowKit.framework/XPCServices/BackgroundShortcutRunner
+66516  23.8 ModelCatalogRuntime.framework/Versions/A/ModelCatalogAgent
+66477  23.2 VoiceShortcuts.framework/Versions/A/Support/siriactionsd
+40718  22.0 Microsoft Defender.app/.../wdavdaemon_unprivileged
+  927  19.8 Microsoft Defender.app/.../wdavdaemon_enterprise
+  552  16.3 Microsoft Defender.app/.../wdavdaemon
+12721  13.2 Virtualization.framework/.../VirtualMachine.xpc
+
+So `spec.md:42`'s "the final headline must be measured on AC power" has a trap in it: the TRANSITION
+to AC is the worst measuring window there is, and `power: AC Power` in a provenance header does not
+mean the machine was ready. That is the finding this file exists for, and it is why the preflight
+gate in `lib-provenance.sh` refuses on load rather than only recording it.
+
+=== ATTEMPT 1, 19:21-19:22, the same two instruments, contaminated by the orphaned item-15 ===
+=== invocation instead (see 2026-09-01T171803Z-*.txt). Kept because its CPU SHARES survive a       ===
+=== competitor better than its wall clock does, and ordering the queue is all round 2 asks of them. ===
+=== round 2 instruments: -phases and -cpuprofile on the current default at 1b ===
+commit:   3379b71a11d02dd8b8a6d9773bf37d8488ef0632
+go:       go version go1.27.0 darwin/arm64
+machine:  Apple M5 Pro, hw.ncpu 15, 24 GiB, 26.5.2 arm64
+hyperfine: hyperfine 1.20.0
+power:    'Battery Power' 	10%; discharging; 0:28 remaining present: true
+load:     19:21  up 1 day,  9:40, 19 users, load averages: 3.55 3.36 3.06
+PROVISIONAL: measured on battery, spec.md:42 requires the headline on AC power
+--- phases run 1: bin/1brc -phases -in measurements-1b.txt ---
+phases: workers=20 chunks=3300 read=12.8469229s fold=22.618659682s read/(read+fold)=36.2%
+phases: worker wall min=1.740233s p50=1.775720459s max=1.804308209s sum=35.534903835s skew(max/min)=1.037 merge=5.99575ms
+real 2.18
+user 18.86
+sys 2.54
+--- phases run 2: bin/1brc -phases -in measurements-1b.txt ---
+phases: workers=20 chunks=3300 read=9.011785502s fold=21.616378236s read/(read+fold)=29.4%
+phases: worker wall min=1.515049625s p50=1.533872125s max=1.549576041s sum=30.669377793s skew(max/min)=1.023 merge=4.474709ms
+real 1.56
+user 18.58
+sys 2.17
+--- phases run 3: bin/1brc -phases -in measurements-1b.txt ---
+phases: workers=20 chunks=3300 read=8.756399338s fold=21.687645328s read/(read+fold)=28.8%
+phases: worker wall min=1.4985865s p50=1.532621917s max=1.550976791s sum=30.496490834s skew(max/min)=1.035 merge=4.405334ms
+real 1.56
+user 18.56
+sys 2.13
+--- cpuprofile run: bin/1brc -cpuprofile /tmp/round2.pprof -in measurements-1b.txt ---
+real 1.86
+user 18.78
+sys 2.51
+--- go tool pprof -top -nodecount=25 ---
+File: 1brc
+Type: cpu
+Time: 2026-09-01 19:22:28 CEST
+Duration: 1.85s, Total samples = 14.74s (796.26%)
+Showing nodes accounting for 14.54s, 98.64% of 14.74s total
+Dropped 48 nodes (cum <= 0.07s)
+      flat  flat%   sum%        cum   cum%
+     4.34s 29.44% 29.44%      4.45s 30.19%  main.indexDelim
+     2.79s 18.93% 48.37%      2.81s 19.06%  main.validTemp
+     2.17s 14.72% 63.09%      2.17s 14.72%  syscall.rawsyscalln
+     1.34s  9.09% 72.18%      2.61s 17.71%  main.(*table).update
+     1.19s  8.07% 80.26%     12.45s 84.46%  main.(*table).foldRows
+     1.08s  7.33% 87.58%      1.08s  7.33%  runtime.memequal
+     0.97s  6.58% 94.17%      1.19s  8.07%  main.parseTempBranchless (inline)
+     0.48s  3.26% 97.42%      0.48s  3.26%  encoding/binary.littleEndian.Uint64 (inline)
+     0.15s  1.02% 98.44%      0.15s  1.02%  main.(*table).merge (inline)
+     0.03s   0.2% 98.64%      1.11s  7.53%  bytes.Equal (inline)
+         0     0% 98.64%      2.18s 14.79%  internal/poll.(*FD).Pread
+         0     0% 98.64%      2.18s 14.79%  internal/poll.(*FD).Pread.func1 (inline)
+         0     0% 98.64%      2.18s 14.79%  internal/poll.ignoringEINTR2[go.shape.int] (inline)
+         0     0% 98.64%     12.46s 84.53%  main.(*table).fold
+         0     0% 98.64%     14.65s 99.39%  main.aggregateFile.func3
+         0     0% 98.64%     14.64s 99.32%  main.foldRange
+         0     0% 98.64%     12.46s 84.53%  main.foldTimed
+         0     0% 98.64%      2.18s 14.79%  os.(*File).ReadAt
+         0     0% 98.64%      2.18s 14.79%  os.(*File).pread (inline)
+         0     0% 98.64%      2.18s 14.79%  syscall.Pread (inline)
+         0     0% 98.64%      2.18s 14.79%  syscall.pread
+         0     0% 98.64%      2.18s 14.79%  syscall.syscall6
+         0     0% 98.64%      2.18s 14.79%  syscall.syscalln
+
+Arithmetic derived from the runs above, evaluated rather than written by hand:
+
+  $ python3 -c "..."
+read share of worker wall  28.76%
+worker wall skew max/min   1.0350
+workers busy (sum/wall)    19.55
+workers blocked in read    5.61
+cores busy (user/wall)     11.90 of 15
+CPU per row                18.56 ns
+compute floor user/cores   1.237 s
+H-14 measured ceiling      20.7%
+merge share of wall        0.28%
+effective read bandwidth   8.84 GB/s (peak measured 18.3)
+CPU budget for 1.000 s     15.00 ns/row, so cut 19.2% of CPU
+profile samples vs user    14.74 s vs 18.78 s, 21.5% short

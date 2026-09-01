@@ -1,0 +1,43 @@
+# experiment 2026-09-01T171803Z
+hypothesis: queue item 15 - invocation B re-measured with the cooldown on
+prediction: E-18 derives -4.49% for buf 1M, -1.86% for bits 14 and -5.35% for the page cache once the slot bias is subtracted; if that extrapolation holds, at least one of the three changes sign here
+file:     measurements-1b.txt   runs: 5   warmup: 1   cooldown: 20s
+commit:   3379b71a11d02dd8b8a6d9773bf37d8488ef0632
+go:       go version go1.27.0 darwin/arm64
+machine:  Apple M5 Pro, hw.ncpu 15, 24 GiB, 26.5.2 arm64
+hyperfine: hyperfine 1.20.0
+power:    'Battery Power' 	12%; discharging; 0:45 remaining present: true
+load:     19:18  up 1 day,  9:37, 19 users, load averages: 4.08 3.04 2.88
+PROVISIONAL: measured on battery, spec.md:42 requires the headline on AC power
+
+$ default.a: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+$ buf1M: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -buf 1024 > /dev/null
+$ bits14: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -bits 14 > /dev/null
+$ pagecache: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -nocache=false > /dev/null
+$ split: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -table split > /dev/null
+$ scalar: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -parse scalar > /dev/null
+$ cursor: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -split cursor > /dev/null
+$ default.b: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+
+Benchmark 1: default.a
+  Time (mean ± σ):      1.748 s ±  0.101 s    [User: 18.754 s, System: 2.412 s]
+  Range (min … max):    1.623 s …  1.887 s    5 runs
+ 
+Benchmark 2: buf1M
+  Time (mean ± σ):      1.505 s ±  0.031 s    [User: 18.598 s, System: 1.754 s]
+  Range (min … max):    1.462 s …  1.544 s    5 runs
+ 
+Benchmark 3: bits14
+  Time (mean ± σ):      1.793 s ±  0.206 s    [User: 18.676 s, System: 2.451 s]
+  Range (min … max):    1.650 s …  2.151 s    5 runs
+ 
+Benchmark 4: pagecache
+
+*** NOT A VERDICT — VOID, CONTAMINATED AND ABORTED. ***
+This invocation was orphaned (PPID 1) when the cycle that launched it at 19:18:00 was cut off, and it
+was still running when the NEXT cycle started. That cycle ran four 1b instrument runs (three
+`-phases`, one `-cpuprofile`) between 19:21:00 and 19:22:28, i.e. inside arms 1-3 of 8, so both
+measurements are contaminated: the arms saw a competing 13.8 GB reader on all 15 cores, and the
+leading `default.a` bracket anchor that E-17's slot interpolation subtracts against is one of them.
+Killed at 19:25 with 6 of 8 arms unrun. Kept as the record of what the missing lock cost; the fix is
+the flock in `experiment.sh`, and the re-run is queue item 15, still open.
