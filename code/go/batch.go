@@ -25,13 +25,13 @@ const (
 	batchTailSlack  = 8
 )
 
-const swarMostSignificant = 0x7F7F7F7F7F7F7F7F
+const swarLow7Bits = 0x7F7F7F7F7F7F7F7F
 
 // zeroByteMask returns a mask with bit 8k+7 set for every zero byte of w, and no other bits.
 //
 // indexDelim's cheaper `(w-low) &^ w & high` form is not usable here. Its borrow chain can set a lane's high bit above a real match, which is harmless when only the LOWEST set bit is read and is a wrong row boundary when every bit is drained, which is what a batch kernel does.
 func zeroByteMask(w uint64) uint64 {
-	return ^(((w & swarMostSignificant) + swarMostSignificant) | w) & swarHigh
+	return ^(((w & swarLow7Bits) + swarLow7Bits) | w) & swarHigh
 }
 
 // foldBatchSWAR is the batch shape without the vector unit: one pass over the buffer, both needles drained from each 8-byte word in address order, no per-row rescan and no assembly call.

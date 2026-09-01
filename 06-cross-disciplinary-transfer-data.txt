@@ -140,3 +140,16 @@ here: 19.657 s of user CPU over 1.742 s of wall clock is 11.28 cores busy of 15,
 If double buffering (candidate C5) closed the whole gap and nothing else changed, the same CPU
 work over 15 busy cores would be 19.657/15 = 1.310 s. That is a CEILING on that one change under
 an assumption the report states; it is not a prediction that it will be reached.
+
+Syscall count, the bound in candidate C5. From the recorded file size and the measured-best
+buffer (E-06 KEEP 4 MiB):
+
+  13,795,610,267 / (4 * 1024 * 1024) = 3,289.2 reads for the whole file
+  3,289 / 15 workers                 = 219.3 reads per worker
+  3,289 * 10 us                      = 32.9 ms of syscall entry, spread over 15 cores
+
+DERIVED, and deliberately generous to the idea it kills: 10 us per pread is an order of
+magnitude above a warm darwin syscall, and foldRange's carry makes each read a few bytes
+short of 4 MiB, so the true count is marginally higher and the true per-call cost much
+lower. Against a 754.4 ms +/- 8.8 ms I/O floor there is no room for batching to matter at
+either end of that range, which is why the argument does not expire with the numbers.
