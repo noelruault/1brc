@@ -1,0 +1,99 @@
+# 01-definition — raw data
+# Everything below is the verbatim output of the command shown above it.
+
+## Upstream fetch (2026-09-01)
+
+$ curl -sS -f -o official-<name> https://raw.githubusercontent.com/gunnarmorling/1brc/main/<path>
+$ curl -sS https://api.github.com/repos/gunnarmorling/1brc/commits/main | grep -m1 '"sha"'
+  "sha": "db064194be375edc02d6dbcd21268ad40f7e2869",
+
+$ shasum -a 256 official-*
+bf1de89382cf987d97aac32fc381221cd628e9eb87e3ea1b68cd5695c7d97c55  official-calculate_average_baseline.sh
+d63c993ce57fa619eecec643fe60cd35d224289c06f697ffb968d8018cae4fb9  official-CalculateAverage_baseline.java
+f003c8f8e3420230c89b47ef2fb12ac589ccb49482ffed23e6d9e5325fb8c8fd  official-create_measurements.sh
+efc83686387bfb2fd4b7d03c6e6248ff8828764758ae6dd32ea817a2207a093d  official-CreateMeasurements.java
+cdcdf6def6689a209ff21d96a7006853737e486a18e8f83d5a58d6150401065c  official-CreateMeasurements3.java
+8963cbbba3ff2c566a0f4f90d4c5497ed117d8c57550553cdb771bab96a65e60  official-evaluate.sh
+6151a8b79dfc18093bcae872652433406fbf90fa7fc4084785653e88c7ef8cf5  official-README.md
+
+Paths fetched, in the same order:
+  calculate_average_baseline.sh
+  src/main/java/dev/morling/onebrc/CalculateAverage_baseline.java
+  create_measurements.sh
+  src/main/java/dev/morling/onebrc/CreateMeasurements.java
+  src/main/java/dev/morling/onebrc/CreateMeasurements3.java
+  evaluate.sh
+  README.md
+
+## Station count in the official generator
+
+$ grep -o 'new WeatherStation("[^"]*", *-\?[0-9.]*)' official-CreateMeasurements.java | wc -l
+     413
+
+$ ... | sed 's/.*, *//;s/)//' | sort -n | sed -n '1p;$p'   # station mean range
+-14.4
+30.5
+
+$ grep -o 'new WeatherStation("[^"]*"' official-CreateMeasurements.java | sed ... | awk '{print length($0)}' | sort -rn | head -1   # longest name, bytes
+26
+
+## Evaluation procedure, from evaluate.sh
+
+$ grep -nE '^RUNS|MEASUREMENTS_FILE=|HYPERFINE_OPTS=|physcpubind|trimmed_mean=' official-evaluate.sh
+36:MEASUREMENTS_FILE="measurements_1B.txt"
+37:RUNS=10
+178:  HYPERFINE_OPTS="--warmup 0 --runs $RUNS --export-json $fork-$filetimestamp-timing.json --output ./$fork-$filetimestamp.out"
+185:    # prepend this with numactl --physcpubind=0-7 for running it only with 8 cores
+186:    numactl --physcpubind=0-7 hyperfine $HYPERFINE_OPTS "$TIMEOUT ./calculate_average_$fork.sh 2>&1"
+211:  trimmed_mean=$(jq -r '.results[0].times | sort_by(.|tonumber) | .[1:-1] | add / length' $fork-$filetimestamp-timing.json)
+239:  trimmed_mean=$(jq -r '.results[0].times | sort_by(.|tonumber) | .[1:-1] | add / length' $fork-$filetimestamp-timing.json)
+
+## The JVM cross-check that was NOT run, and why
+
+$ /usr/libexec/java_home -V
+Matching Java Virtual Machines (1):
+    1.8.0_144 (x86_64) "Oracle Corporation" - "Java SE 8" /Library/Internet Plug-Ins/JavaAppletPlugin.plugin/Contents/Home
+/Library/Internet Plug-Ins/JavaAppletPlugin.plugin/Contents/Home
+$ javac -version
+The operation couldn’t be completed. Unable to locate a Java Runtime that supports javac.
+Please visit http://www.java.com for information on installing Java.
+
+Only a Java 8 JRE from the applet plugin is present; there is no javac, and the
+upstream baseline needs records and nextGaussian(mean, sd) from Java 17+. The
+output semantics in 01-definition.md are therefore DERIVED by reading the cited
+source, not confirmed against a running JVM. Revive trigger: install a JDK 21+
+and diff the baseline output against 1brc/code/gen/cmd/reference on the 10m file.
+
+## The Go-side divergences, measured
+
+$ cd 1brc/code/gen && go test -v -run "TenthsShape|TiesTowardPositive|NegativeZero|UTF16Order|TestMean" ./...
+=== RUN   TestAppendTenthsShape
+--- PASS: TestAppendTenthsShape (0.00s)
+=== RUN   TestRoundToTenthsTiesTowardPositive
+--- PASS: TestRoundToTenthsTiesTowardPositive (0.00s)
+=== RUN   TestFloatFormattingEmitsNegativeZero
+--- PASS: TestFloatFormattingEmitsNegativeZero (0.00s)
+=== RUN   TestUTF16OrderDivergesAboveBMP
+--- PASS: TestUTF16OrderDivergesAboveBMP (0.00s)
+=== RUN   TestMean
+--- PASS: TestMean (0.00s)
+PASS
+ok  	github.com/noelruault/research/1brc/code/gen	0.167s
+
+## Machine of record
+
+$ sysctl -n machdep.cpu.brand_string hw.ncpu hw.perflevel0.name hw.perflevel0.logicalcpu hw.perflevel1.name hw.perflevel1.logicalcpu hw.memsize hw.pagesize
+Apple M5 Pro
+15
+Super
+5
+Performance
+10
+25769803776
+16384
+
+$ sw_vers -productVersion; uname -mrs; go version; hyperfine --version
+26.5.2
+Darwin 25.5.0 arm64
+go version go1.27.0 darwin/arm64
+hyperfine 1.20.0
