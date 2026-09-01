@@ -32,7 +32,7 @@ One rule from `quantization/00-methodology.md` is already load-bearing here and 
 |---|---|---|
 | 1,000,000,000 rows, current default (20 workers) | **1.613 s ± 0.047 s** (range 1.568-1.659, 4 runs, 20 s cooldown) | [`bench/2026-09-01T164052Z-E-17-the-two-knobs-re-measured-with-a-20-s-cooldown-incumbent-at-both-ends.txt`](bench/2026-09-01T164052Z-E-17-the-two-knobs-re-measured-with-a-20-s-cooldown-incumbent-at-both-ends.txt) |
 | the same invocation's incumbent (15 workers), for the honest delta | 1.729 s and 1.773 s in slots 1 and 4, **−7.49% against the slot-2 interpolation** | same |
-| 1,000,000,000 rows, v1 as published by `go-v1-parallel` | 1.742 s ± 0.019 s, **no cooldown, so slot-biased in an unknown direction** | [`bench/2026-09-01T152951Z-v1-parallel.txt`](bench/2026-09-01T152951Z-v1-parallel.txt) |
+| 1,000,000,000 rows, v1 as published by `go-v1-parallel` | 1.742 s ± 0.019 s (range 1.712-1.760, 5 runs) — **`bench.sh`, one command per invocation, so it has no arm slots and carries no slot bias**; what it does carry is its own 5 runs' 2.8% spread, uncorrected | [`bench/2026-09-01T152951Z-v1-parallel.txt`](bench/2026-09-01T152951Z-v1-parallel.txt) |
 | 100,000,000 rows | 161.0 ms ± 4.8 ms (15 workers, not re-measured) | same |
 | 10,000,000 rows | 27.8 ms ± 0.9 ms (15 workers, not re-measured) | same |
 | the skeleton it replaces | 2.607 s at 100m and 260.5 ms at 10m, 26.1 ns/row | `bench/2026-09-01T125649Z-skeleton.txt` |
@@ -40,7 +40,7 @@ One rule from `quantization/00-methodology.md` is already load-bearing here and 
 
 So the binary is **1.61× over target**. PROVISIONAL: battery, and `spec.md:42` requires the headline on AC power. Correctness gate green on both 10m files (413 and 10,000 stations) before every number above, per arm.
 
-**The 1.742 → 1.613 comparison is the weakest number in this table and it is kept only for continuity.** Those are two invocations under two different rules; E-13's incumbent moved 11.17% between invocations eight minutes apart with no code change at all. The delta that carries is the **7.49% inside invocation K**, against a bracket interpolated to the same slot.
+**The 1.742 → 1.613 comparison is the weakest number in this table and it is kept only for continuity.** Those are two invocations under two different rules, and neither this ledger nor `spec.md:35` permits subtracting across invocations: E-13's incumbent moved 11.17% between two invocations eight minutes apart with no code change at all. The delta that carries is the **7.49% inside invocation K**, against a bracket interpolated to the same slot.
 
 Derived, from the E-17 arm: 18.541 s of user CPU for 1.613 s of wall clock is **11.5 cores of 15 busy, 77% parallel efficiency**, and 18.5 ns of CPU per row. The I/O floor measured in `02-baseline.md` is 754 ms, so **47% of the current wall clock is the unavoidable read** and the compute above it is what the remaining rounds have to attack.
 
