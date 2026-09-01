@@ -69,7 +69,7 @@ func TestBorrowChainMaskWouldBeWrongHere(t *testing.T) {
 // foldWith folds data with one kernel and returns the drained aggregate plus the number of buckets used.
 func foldWith(t *testing.T, k kernel, data []byte) (map[string]*gen.Accumulator, int, error) {
 	t.Helper()
-	tab := newTable(12, false)
+	tab := newTable(12, tableCombined)
 	if err := tab.fold(data, k, parseBranchless, foldSlice, 0); err != nil {
 		return nil, 0, err
 	}

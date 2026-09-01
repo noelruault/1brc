@@ -174,28 +174,38 @@ func parseTempScalar(b []byte) (tenths int32, next int, ok bool) {
 
 const hashMultiplier = 0x9E3779B97F4A7C15
 
-// hashWord hashes a name from the first 8 bytes of the word it starts in, masking off everything at or above nameLen.
-// 05-go-techniques.md measured that 8 bytes leave exactly one collision across the 413 official stations and none across the 10k set, and the table resolves it with a full compare.
-func hashWord(w uint64, nameLen int) uint64 {
+// maskWord keeps the name's own bytes out of the word the row was read in, clearing everything at or above nameLen.
+// The quotiented table (H-13) stores this word as the bucket's inline key, so it is the identity of a station and not only an input to the hash: two paths that mask differently would give one station two buckets.
+func maskWord(w uint64, nameLen int) uint64 {
 	if nameLen < 8 {
 		w &= ^uint64(0) >> ((8 - nameLen) * 8)
 	}
-	return (w ^ w>>29) * hashMultiplier
+	return w
+}
+
+// mixWord turns a masked key word into a bucket index.
+func mixWord(w uint64) uint64 { return (w ^ w>>29) * hashMultiplier }
+
+// hashWord hashes a name from the first 8 bytes of the word it starts in, masking off everything at or above nameLen.
+// 05-go-techniques.md measured that 8 bytes leave exactly one collision across the 413 official stations and none across the 10k set, and the table resolves it with a full compare.
+func hashWord(w uint64, nameLen int) uint64 { return mixWord(maskWord(w, nameLen)) }
+
+// maskName is maskWord for a caller that has the name but not the word, and it MUST agree with maskWord byte for byte.
+// It never reads past the name, which is what makes it the tail path's masker.
+func maskName(name []byte) uint64 {
+	if len(name) >= 8 {
+		return binary.LittleEndian.Uint64(name)
+	}
+	var w uint64
+	for i := len(name) - 1; i >= 0; i-- {
+		w = w<<8 | uint64(name[i])
+	}
+	return w
 }
 
 // hashName is hashWord for a caller that has the name but not the word, and it MUST agree with hashWord byte for byte: a station hashed two ways would occupy two buckets and split its own aggregate.
 // TestHashPathsAgree pins that.
-func hashName(name []byte) uint64 {
-	var w uint64
-	if len(name) >= 8 {
-		w = binary.LittleEndian.Uint64(name)
-		return hashWord(w, 8)
-	}
-	for i := len(name) - 1; i >= 0; i-- {
-		w = w<<8 | uint64(name[i])
-	}
-	return hashWord(w, len(name))
-}
+func hashName(name []byte) uint64 { return mixWord(maskName(name)) }
 
 func isDigit(c byte) bool { return c-'0' <= 9 }
 

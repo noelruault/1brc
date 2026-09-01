@@ -84,6 +84,10 @@ func aggregateFile(path string, cfg config) (map[string]*gen.Accumulator, error)
 	if err != nil {
 		return nil, err
 	}
+	tk, err := tableMode(cfg.Table)
+	if err != nil {
+		return nil, err
+	}
 	// A batch kernel always parses branchlessly and checks the format with validTemp, so pairing it with any other -parse would silently measure something other than what the flags say.
 	if kern != kernelRow && pk != parseBranchless {
 		return nil, fmt.Errorf("-kernel %s has no %s parse arm; use -kernel row with -parse %s, or add -parse branchless", cfg.Kernel, cfg.Parse, cfg.Parse)
@@ -184,7 +188,7 @@ func aggregateFile(path string, cfg config) (map[string]*gen.Accumulator, error)
 				start := time.Now()
 				defer func() { workerWall[w] = time.Since(start) }()
 			}
-			t := newTable(cfg.Bits, cfg.Table == "split")
+			t := newTable(cfg.Bits, tk)
 			tables[w] = t
 			var buf []byte
 			if mapped == nil {

@@ -114,7 +114,8 @@ func (t *table) foldBatchRow(data []byte, base int64, rowStart, pendingSep, end 
 	}
 	// The parse is NOT checked against end: validTemp already requires a '\n' at pendingSep+next with only digits before it, and end is the lowest undrained newline above pendingSep, so they are the same byte.
 	name := data[rowStart:pendingSep]
-	if !t.update(hashWord(binary.LittleEndian.Uint64(data[rowStart:]), len(name)), name, v) {
+	kw := maskWord(binary.LittleEndian.Uint64(data[rowStart:]), len(name))
+	if !t.update(mixWord(kw), kw, name, v) {
 		return 0, t.fullError(base + int64(rowStart))
 	}
 	return end + 1, nil

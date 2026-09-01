@@ -26,7 +26,7 @@ func defaults() config {
 func strategies() []config {
 	var out []config
 	for _, split := range []string{"static", "cursor"} {
-		for _, layout := range []string{"combined", "split"} {
+		for _, layout := range []string{"combined", "split", "quot"} {
 			for _, io := range []string{"pread", "mmap"} {
 				// The parse sweep names -fold slice because the pointer arms have no arm for any parse but word, which is the guard in aggregateFile.
 				for _, parse := range []string{"branchless", "scalar", "word"} {
@@ -212,6 +212,10 @@ func TestHashPathsAgree(t *testing.T) {
 			if got, want := hashWord(w, n), hashName(name); got != want {
 				t.Fatalf("n=%d name=%q: hashWord=%#x hashName=%#x", n, name, got, want)
 			}
+			// The quotiented layout stores the masked word AS the bucket's key, so the two paths agreeing on the hash is no longer enough: disagreeing on the word would give one station two buckets, and the tail path is where the second one would come from.
+			if got, want := maskWord(w, n), maskName(name); got != want {
+				t.Fatalf("n=%d name=%q: maskWord=%#x maskName=%#x", n, name, got, want)
+			}
 		}
 	}
 }
@@ -366,28 +370,28 @@ func TestTableLayoutsAgree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, split := range []bool{false, true} {
+	for _, layout := range tableKinds() {
 		for _, pk := range []parseKind{parseScalar, parseBranchless, parseWord} {
-			tab := newTable(9, split)
+			tab := newTable(9, layout)
 			if err := tab.fold(data, kernelRow, pk, foldSlice, 0); err != nil {
-				t.Fatalf("split=%v parse=%d: %v", split, pk, err)
+				t.Fatalf("layout=%d parse=%d: %v", layout, pk, err)
 			}
 			got := map[string]*gen.Accumulator{}
 			tab.drain(got)
 			if len(got) != len(want) {
-				t.Fatalf("split=%v parse=%d: %d stations, want %d", split, pk, len(got), len(want))
+				t.Fatalf("layout=%d parse=%d: %d stations, want %d", layout, pk, len(got), len(want))
 			}
 			// One BUCKET per station, not one per (station, temperature): the fast path hashes a whole word out of the row, so a hash that forgets to mask off the bytes at and above the separator still produces the right output through drain() while filling the table with a bucket per distinct temperature.
 			if tab.size != len(want) {
-				t.Fatalf("split=%v parse=%d: %d buckets used for %d stations", split, pk, tab.size, len(want))
+				t.Fatalf("layout=%d parse=%d: %d buckets used for %d stations", layout, pk, tab.size, len(want))
 			}
 			for name, w := range want {
 				g := got[name]
 				if g == nil {
-					t.Fatalf("split=%v parse=%d: %q missing", split, pk, name)
+					t.Fatalf("layout=%d parse=%d: %q missing", layout, pk, name)
 				}
 				if *g != *w {
-					t.Fatalf("split=%v parse=%d: %q got %+v want %+v", split, pk, name, *g, *w)
+					t.Fatalf("layout=%d parse=%d: %q got %+v want %+v", layout, pk, name, *g, *w)
 				}
 			}
 		}
@@ -406,16 +410,16 @@ func TestTableProbesPastAFullBucketRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, split := range []bool{false, true} {
+	for _, layout := range tableKinds() {
 		// Eight bits is 256 buckets for 200 keys: a 78% load factor, where linear probing runs are long.
-		tab := newTable(8, split)
+		tab := newTable(8, layout)
 		if err := tab.fold(data, kernelRow, parseBranchless, foldSlice, 0); err != nil {
 			t.Fatal(err)
 		}
 		got := map[string]*gen.Accumulator{}
 		tab.drain(got)
 		if len(got) != len(want) {
-			t.Fatalf("split=%v: %d stations, want %d", split, len(got), len(want))
+			t.Fatalf("layout=%d: %d stations, want %d", layout, len(got), len(want))
 		}
 	}
 }
@@ -426,14 +430,14 @@ func TestTableTooSmallErrorsInsteadOfHanging(t *testing.T) {
 	for i := range 200 {
 		fmt.Fprintf(&body, "station-%03d;1.%d\n", i, i%10)
 	}
-	for _, split := range []bool{false, true} {
+	for _, layout := range tableKinds() {
 		// Six bits is 64 buckets for 200 keys: it must fill and then fail.
-		err := newTable(6, split).fold(body.Bytes(), kernelRow, parseBranchless, foldSlice, 0)
+		err := newTable(6, layout).fold(body.Bytes(), kernelRow, parseBranchless, foldSlice, 0)
 		if err == nil {
-			t.Fatalf("split=%v: a 64-bucket table accepted 200 stations", split)
+			t.Fatalf("layout=%d: a 64-bucket table accepted 200 stations", layout)
 		}
 		if !strings.Contains(err.Error(), "buckets are occupied") {
-			t.Fatalf("split=%v: wrong error: %v", split, err)
+			t.Fatalf("layout=%d: wrong error: %v", layout, err)
 		}
 	}
 }
@@ -563,7 +567,7 @@ func TestIndexDelimAtAgreesWithIndexDelim(t *testing.T) {
 // The bucket count comes back too, because drain merges by NAME: an arm that hashes one station two ways still prints the right answer and only shows up as extra entries in the table.
 func foldArm(t *testing.T, fk foldKind, data []byte) (string, int, error) {
 	t.Helper()
-	tab := newTable(12, false)
+	tab := newTable(12, tableCombined)
 	if err := tab.fold(data, kernelRow, parseWord, fk, 0); err != nil {
 		return "", 0, err
 	}
@@ -624,5 +628,54 @@ func TestFoldArmsAgree(t *testing.T) {
 				t.Fatalf("every arm agreed on %q and the reference says %q", want, ref)
 			}
 		})
+	}
+}
+
+// tableKinds is every layout the binary can be asked for: correctness must hold for all of them or a benchmark of one is measuring a bug.
+func tableKinds() []tableKind { return []tableKind{tableCombined, tableSplit, tableQuot} }
+
+// TestQuotEntryIsThirtyTwoBytes pins H-13's whole premise. The hypothesis is that the probed array shrinks from 48 bytes per bucket to 32; a field added without shrinking another turns the arm into a measurement of nothing.
+func TestQuotEntryIsThirtyTwoBytes(t *testing.T) {
+	if got := unsafe.Sizeof(qentry{}); got != 32 {
+		t.Fatalf("qentry is %d bytes, want 32 (entry is %d)", got, unsafe.Sizeof(entry{}))
+	}
+}
+
+// TestQuotSeparatesNamesOneWordCannotTell is the test the generated corpus cannot be: no key set produces a name with a NUL byte, and the 413 set has no two names sharing eight bytes and a length.
+// Both cases collide in the inline word alone, so this is what distinguishes the quotiented probe's two guards from a word compare that would merge two stations into one bucket.
+func TestQuotSeparatesNamesOneWordCannotTell(t *testing.T) {
+	cases := []struct {
+		what string
+		body string
+	}{
+		// Same first eight bytes, same length, different tail: only the full compare through keys can tell these apart.
+		{"shared 8-byte prefix", "Villaviciosa1;1.0\nVillaviciosa2;2.0\nVillaviciosa1;3.0\n"},
+		// "ab" and "ab\x00" mask to the same word; only the length separates them.
+		{"NUL-padded short name", "ab;1.0\nab\x00;2.0\nab;3.0\n"},
+		// A one-byte name against the empty name, which masks to zero exactly like an empty bucket.
+		{"empty name", ";1.0\na;2.0\n;3.0\n"},
+	}
+	for _, c := range cases {
+		data := []byte(c.body)
+		want, err := gen.Aggregate(bytes.NewReader(data))
+		if err != nil {
+			t.Fatalf("%s: reference: %v", c.what, err)
+		}
+		for _, layout := range tableKinds() {
+			tab := newTable(9, layout)
+			if err := tab.fold(data, kernelRow, parseWord, foldSlice, 0); err != nil {
+				t.Fatalf("%s layout=%d: %v", c.what, layout, err)
+			}
+			got := map[string]*gen.Accumulator{}
+			tab.drain(got)
+			if len(got) != len(want) {
+				t.Fatalf("%s layout=%d: %d stations, want %d", c.what, layout, len(got), len(want))
+			}
+			for name, w := range want {
+				if g := got[name]; g == nil || *g != *w {
+					t.Fatalf("%s layout=%d: %q got %+v want %+v", c.what, layout, name, g, w)
+				}
+			}
+		}
 	}
 }
