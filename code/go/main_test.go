@@ -244,6 +244,29 @@ func TestParseTempWordAcceptsEveryLegalTemperature(t *testing.T) {
 	}
 }
 
+// TestParseTempWordIgnoresTheBytesPastTheField measures the claim the pointer walk's over-read guard rests on, rather than reasoning it: every lane at or past next is masked out of all four rejections, so what the 8-byte load picks up beyond a field cannot change the answer.
+// That is why an unbounded load in foldRowsPtr produces the right output and is still a bug — the guard is memory safety, and no output test can stand in for it.
+func TestParseTempWordIgnoresTheBytesPastTheField(t *testing.T) {
+	r := rand.New(rand.NewPCG(7, 11))
+	for v := int(gen.MinTenths); v <= int(gen.MaxTenths); v++ {
+		field := string(gen.AppendTenths(nil, gen.Tenths(v))) + "\n"
+		var b [8]byte
+		copy(b[:], field)
+		base := binary.LittleEndian.Uint64(b[:])
+		wantV, wantNext, wantOK := parseTempWordFrom(base)
+		if !wantOK || wantNext != len(field) {
+			t.Fatalf("%q: parseTempWordFrom = (%d, %d, %v), want next %d and ok", field, wantV, wantNext, wantOK, len(field))
+		}
+		keep := ^uint64(0) >> (64 - 8*wantNext)
+		for range 20 {
+			got, next, ok := parseTempWordFrom(base&keep | r.Uint64()&^keep)
+			if got != wantV || next != wantNext || ok != wantOK {
+				t.Fatalf("%q: lanes past the field changed the answer: (%d,%d,%v) not (%d,%d,%v)", field, got, next, ok, wantV, wantNext, wantOK)
+			}
+		}
+	}
+}
+
 // TestParseTempWordMatchesTheByteCheck is the differential test queue item 16 turns on: parseTempWord replaces parseTempBranchless plus validTemp, so it may not accept or reject a single field they would not.
 //
 // The sweep is exhaustive over 6-byte fields in the alphabet the shape is built from, so the adversarial cases are proved rather than spot-checked: a name carrying the separator ("b;1.0"), a three-digit temperature ("100.0"), a sign with no digit, a doubled dot, a truncated field and a field with no '\n' are all inside it, as are the two lanes above the row that neither check may read.
@@ -520,11 +543,13 @@ func TestIndexDelimAtAgreesWithIndexDelim(t *testing.T) {
 }
 
 // foldArm folds data with one -fold arm and returns the reference's own rendering of the result, so two arms are compared on the bytes the binary would print rather than on map identity.
-func foldArm(t *testing.T, fk foldKind, data []byte) (string, error) {
+//
+// The bucket count comes back too, because drain merges by NAME: an arm that hashes one station two ways still prints the right answer and only shows up as extra entries in the table.
+func foldArm(t *testing.T, fk foldKind, data []byte) (string, int, error) {
 	t.Helper()
 	tab := newTable(12, false)
 	if err := tab.fold(data, kernelRow, parseWord, fk, 0); err != nil {
-		return "", err
+		return "", 0, err
 	}
 	got := map[string]*gen.Accumulator{}
 	tab.drain(got)
@@ -532,7 +557,7 @@ func foldArm(t *testing.T, fk foldKind, data []byte) (string, error) {
 	if err := gen.WriteResult(&out, got); err != nil {
 		t.Fatal(err)
 	}
-	return out.String(), nil
+	return out.String(), tab.size, nil
 }
 
 // TestFoldArmsAgree is the sibling check every new row splitter in this repo owes before it ships: the three -fold arms must fold and REJECT byte for byte what the incumbent loop does, and agree with the reference where it accepts.
@@ -546,15 +571,20 @@ func TestFoldArmsAgree(t *testing.T) {
 		{"empty name", pad + ";1.0\n" + pad},
 		{"names either side of the eight-byte hash", pad + "a;1.0\nabcdefg;2.0\nabcdefgh;3.0\nabcdefghi;4.0\n" + pad},
 		{"two names sharing all eight hashed bytes", pad + "AbcdefgH1;1.0\nAbcdefgH2;-1.0\nAbcdefgH1;3.0\n" + pad},
+		// One short name with four different temperatures is the only shape that catches a hash reading past the name: the output is right either way and the table holds four entries instead of one.
 		{"the range ends", pad + "Abha;-99.9\nAbha;99.9\nAbha;0.0\nAbha;-0.0\n" + pad},
 		{"out of range", pad + "Hamburg;100.0\n" + pad},
 		{"two decimals", pad + "Hamburg;12.00\n" + pad},
+		// A name past 119 bytes is the only input that makes the fast path's over-read guard fire and hand the row to the scalar tail; nothing shorter can reach it under maxRow.
+		{"a name longer than the over-read guard allows", pad + strings.Repeat("L", 200) + ";1.0\n" + pad},
+		// The same row LAST, where the guard is the only thing between the 8-byte load and the end of the chunk. Dropping it makes the slice arms panic; the pointer arm reads past the buffer in silence, which is why the guard carries a comment instead of a test.
+		{"a long name at the very end of the chunk", pad + strings.Repeat("L", 200) + ";1.0\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			data := []byte(tc.body)
-			want, wantErr := foldArm(t, foldSlice, data)
+			want, wantSize, wantErr := foldArm(t, foldSlice, data)
 			for _, fk := range []foldKind{foldHash, foldPtr, foldBoth} {
-				got, gotErr := foldArm(t, fk, data)
+				got, gotSize, gotErr := foldArm(t, fk, data)
 				if (gotErr == nil) != (wantErr == nil) {
 					t.Fatalf("fold %d: err %v, incumbent err %v", fk, gotErr, wantErr)
 				}
@@ -563,6 +593,9 @@ func TestFoldArmsAgree(t *testing.T) {
 				}
 				if got != want {
 					t.Fatalf("fold %d:\n got %q\nwant %q", fk, got, want)
+				}
+				if gotSize != wantSize {
+					t.Fatalf("fold %d used %d buckets, the incumbent used %d: the two hashed the same name differently", fk, gotSize, wantSize)
 				}
 			}
 			if wantErr != nil {

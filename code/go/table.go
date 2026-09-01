@@ -205,6 +205,7 @@ func (t *table) foldRowsPtr(data []byte, base int64, fuse bool) (int, error) {
 		if sep < 0 || !semi {
 			return 0, rowError(base+int64(pos), data[pos:])
 		}
+		// This guard is the ONLY thing bounding the load below: the incumbent's slice read would panic if it were loosened and this one reads past the buffer in silence.
 		if pos+sep+9 > n {
 			break
 		}
