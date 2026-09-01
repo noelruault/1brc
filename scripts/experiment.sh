@@ -88,6 +88,11 @@ run() {
   [[ -f $DATA ]] || die "missing $DATA (regenerate with the command in 02-baseline-data.txt)"
   command -v hyperfine >/dev/null || die "hyperfine not installed (brew install hyperfine)"
 
+  # Taken before the correctness gate, not after: those runs are themselves 15-core load, so holding the lock across them is what stops one experiment's checks landing inside another's timing.
+  measure_lock_acquire "experiment.sh $HYP"
+  # Installed with the lock, not with $md below, so an arm failing the correctness gate still releases it.
+  trap 'rm -f "$md"; measure_lock_release' EXIT
+
   cd "$REPO/1brc/code/go"
   go build -o bin/1brc .
 
@@ -104,7 +109,7 @@ run() {
   slug="$(echo "$HYP" | tr -cs '[:alnum:]' '-' | sed 's/^-//;s/-$//')"
   out="$REPO/1brc/bench/$stamp-$slug.txt"
   md="$(mktemp)"
-  trap 'rm -f "$md"' EXIT
+  require_quiet
 
   {
     echo "# experiment $stamp"
@@ -208,6 +213,55 @@ self_test() {
   if [[ ${ARM_FLAGS[0]} != "" || ${ARM_NAMES[0]} != "incumbent" ]]; then
     echo "FAIL: an incumbent arm with no flags did not parse" >&2; fails=$((fails + 1))
   else echo "ok: an incumbent arm with no flags parses"; fi
+
+  # The preflight, which exists because recording the machine's state did not stop two void attempts.
+  # QUIET_WAIT=0 so the refusal path never sleeps here; QUIET_LOAD=0 and =999 stand in for a busy and an idle machine.
+  local out got
+  MEASURE_LOCK="$(mktemp -d)/lock"
+
+  measure_lock_acquire "the self-test" || { echo "FAIL: a free lock was not acquired" >&2; fails=$((fails + 1)); }
+  if [[ -f $MEASURE_LOCK/pid && $(cat "$MEASURE_LOCK/pid") == "$$" ]]; then echo "ok: acquiring the measurement lock records the holding pid"
+  else echo "FAIL: the lock did not record this pid" >&2; fails=$((fails + 1)); fi
+
+  got=0; out="$(measure_lock_acquire "a second measurement" 2>&1)" || got=$?
+  if [[ $got -eq 3 && $out == *"already timing"* ]]; then echo "ok: a live holder makes a second measurement refuse rather than overlap"
+  else echo "FAIL (want 3/'already timing', got $got/'$out'): the lock let a second measurement in" >&2; fails=$((fails + 1)); fi
+
+  # A crashed cycle leaves its lock behind, and refusing forever on a dead pid would park the loop for good.
+  printf '%s\n' 99999999 > "$MEASURE_LOCK/pid"
+  got=0; out="$(measure_lock_acquire "after a crash" 2>&1)" || got=$?
+  if [[ $got -eq 0 && $out == *"stale lock"* ]]; then echo "ok: a lock held by a dead pid is cleared, not obeyed"
+  else echo "FAIL (want 0/'stale lock', got $got/'$out'): a stale lock was not cleared" >&2; fails=$((fails + 1)); fi
+  measure_lock_release
+  if [[ ! -d $MEASURE_LOCK ]]; then echo "ok: releasing the lock removes it"
+  else echo "FAIL: the lock survived its release" >&2; fails=$((fails + 1)); fi
+
+  got=0; out="$(QUIET_LOAD=0 QUIET_WAIT=0 require_quiet 2>&1)" || got=$?
+  if [[ $got -eq 4 && $out == *"refusing"* ]]; then echo "ok: a machine over the load line makes the measurement refuse"
+  else echo "FAIL (want 4/'refusing', got $got/'$out'): a busy machine was measured anyway" >&2; fails=$((fails + 1)); fi
+
+  got=0; out="$(QUIET_LOAD=0 QUIET_WAIT=0 QUIET_FORCE=1 require_quiet 2>&1)" || got=$?
+  if [[ $got -eq 0 && $out == *"measuring anyway"* ]]; then echo "ok: QUIET_FORCE=1 measures a busy machine, loudly"
+  else echo "FAIL (want 0/'measuring anyway', got $got/'$out'): the force override does not work" >&2; fails=$((fails + 1)); fi
+
+  got=0; out="$(QUIET_LOAD=999 QUIET_WAIT=0 require_quiet 2>&1)" || got=$?
+  if [[ $got -eq 0 && -z $out ]]; then echo "ok: a quiet machine passes the preflight silently"
+  else echo "FAIL (want 0/silence, got $got/'$out'): the preflight fired on a quiet machine" >&2; fails=$((fails + 1)); fi
+
+  # Waiting out the storm rather than refusing on it is the whole point of the wait, so it is pinned through the sleep seam: 30 s of budget is two 15 s waits and then a refusal.
+  got=0; out="$(QUIET_LOAD=0 QUIET_WAIT=30 QUIET_SLEEP='echo slept' require_quiet 2>&1)" || got=$?
+  if [[ $got -eq 4 && $(grep -c slept <<<"$out") -eq 2 ]]; then echo "ok: a busy machine is waited out twice before the measurement refuses"
+  else echo "FAIL (want 4 after 2 waits, got $got after $(grep -c slept <<<"$out")): the wait budget is not spent before refusing" >&2; fails=$((fails + 1)); fi
+
+  # The two defaults are pinned for the reason the cooldown default is: the self-test overrides both, so a mutant that moves them disables the gate in production and nothing else would notice.
+  if [[ $QUIET_LOAD == 6.0 && $QUIET_WAIT == 180 ]]; then echo "ok: the preflight defaults to refusing over load 6.0 after waiting 180 s"
+  else echo "FAIL: the preflight defaults moved to load '$QUIET_LOAD' / wait '$QUIET_WAIT' s" >&2; fails=$((fails + 1)); fi
+
+  # The stamp is what makes a forced number auditable later, so it is pinned on the header, not only on the refusal.
+  if [[ $(QUIET_LOAD=0 provenance_header "$REPO") == *"NOT QUIET"* ]]; then echo "ok: a header taken over the load line stamps NOT QUIET"
+  else echo "FAIL: provenance_header did not stamp a busy machine" >&2; fails=$((fails + 1)); fi
+  if [[ $(QUIET_LOAD=999 provenance_header "$REPO") != *"NOT QUIET"* ]]; then echo "ok: a header taken on a quiet machine carries no stamp"
+  else echo "FAIL: provenance_header stamped a quiet machine" >&2; fails=$((fails + 1)); fi
 
   if ((fails)); then echo "experiment --self-test: $fails FAILED" >&2; return 1; fi
   echo "experiment --self-test: all checks passed"

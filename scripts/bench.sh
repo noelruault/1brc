@@ -16,9 +16,15 @@ WARMUP="${WARMUP:-1}"
 
 command -v hyperfine >/dev/null || { echo "bench: hyperfine not installed (brew install hyperfine)" >&2; exit 1; }
 
+# Held across the correctness runs too: they are 15-core load, so they must not land inside another measurement's timing any more than this bench's own hyperfine runs may.
+measure_lock_acquire "bench.sh $LABEL"
+trap measure_lock_release EXIT
+
 cd "$REPO/1brc/code/go"
 go build -o bin/1brc .
 ASSETS="$ASSETS" bash "$REPO/1brc/scripts/check-correctness.sh"
+
+require_quiet
 
 mkdir -p "$REPO/1brc/bench"
 stamp="$(date -u +%Y-%m-%dT%H%M%SZ)"
