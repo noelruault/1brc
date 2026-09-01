@@ -195,7 +195,7 @@ func (t *table) foldRowsHash(data []byte, base int64) (int, error) {
 // foldRowsPtr walks the buffer with unsafe.Add instead of re-slicing it at every row (queue item 5), and takes the hash's word from the scan when fuse is set, which is queue item 1 on top of it.
 //
 // Every load is one the slice walk makes too and the loop keeps foldRows's own bound, so the fast path still stops maxRow short of the end and foldTail closes the rest.
-// data stays a parameter rather than a bare pointer so the buffer it points into is reachable for as long as the names handed to update are.
+// What keeps the names handed to update pointing at live memory is the CALLER: foldRange owns buf and foldMapped's mapping is unmapped by a defer in aggregateFile, both outliving this call. Taking data by value here does not by itself keep it reachable, so a caller that stops owning its buffer has to add the KeepAlive.
 func (t *table) foldRowsPtr(data []byte, base int64, fuse bool) (int, error) {
 	pos, n := 0, len(data)
 	p := unsafe.Pointer(unsafe.SliceData(data))

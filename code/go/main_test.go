@@ -15,9 +15,11 @@ import (
 	gen "github.com/noelruault/research/1brc/code/gen"
 )
 
-// defaults is what the binary runs with when nobody passes a flag; every test that is not about a strategy uses it, so a default that breaks correctness fails everything.
+// defaults is what the binary runs with when nobody passes a flag, and the parse and the fold READ the shipped constants rather than restating them.
+// They used to be restated and drifted: `branchless` stayed here after E-25 made `word` the default, so the two range-boundary sweeps — the only tests that find a byte-offset off-by-one — ran a parse the binary does not.
+// Workers, buffer and bits stay small on purpose: those are about test speed, not about the shipped shape.
 func defaults() config {
-	return config{Workers: 4, BufKiB: 4096, SegKiB: 2048, Bits: 12, NoCache: false, Split: "static", Table: "combined", IO: "pread", Parse: "branchless", Kernel: "row", Fold: "slice"}
+	return config{Workers: 4, BufKiB: 4096, SegKiB: 2048, Bits: 12, NoCache: false, Split: "static", Table: "combined", IO: "pread", Parse: defaultParse, Kernel: "row", Fold: defaultFold}
 }
 
 // strategies is every combination of the four open hypotheses' flags. Correctness must hold for all of them or a benchmark of one arm is measuring a bug.
@@ -26,15 +28,16 @@ func strategies() []config {
 	for _, split := range []string{"static", "cursor"} {
 		for _, layout := range []string{"combined", "split"} {
 			for _, io := range []string{"pread", "mmap"} {
+				// The parse sweep names -fold slice because the pointer arms have no arm for any parse but word, which is the guard in aggregateFile.
 				for _, parse := range []string{"branchless", "scalar", "word"} {
 					c := defaults()
-					c.Split, c.Table, c.IO, c.Parse = split, layout, io, parse
+					c.Split, c.Table, c.IO, c.Parse, c.Fold = split, layout, io, parse, "slice"
 					out = append(out, c)
 				}
 				// The batch kernels have no scalar arm, so they are swept on their own rather than as a fifth dimension that would be half-empty.
 				for _, k := range []string{"batch-swar", "batch-neon"} {
 					c := defaults()
-					c.Split, c.Table, c.IO, c.Kernel = split, layout, io, k
+					c.Split, c.Table, c.IO, c.Parse, c.Kernel, c.Fold = split, layout, io, "branchless", k, "slice"
 					out = append(out, c)
 				}
 				// The -fold arms are word-parse only by the guard in aggregateFile, so they are swept beside the parses rather than crossed with them.
@@ -101,18 +104,21 @@ func TestEveryRangeBoundaryIsFoldedExactlyOnce(t *testing.T) {
 		for _, bufKiB := range []int{1, 2, 7, 64} {
 			for _, split := range []string{"static", "cursor"} {
 				for _, io := range []string{"pread", "mmap"} {
-					cfg := defaults()
-					cfg.Workers, cfg.BufKiB, cfg.SegKiB, cfg.Split, cfg.IO = workers, bufKiB, bufKiB, split, io
-					name := fmt.Sprintf("%s/%s/workers=%d/buf=%dKiB", split, io, workers, bufKiB)
-					t.Run(name, func(t *testing.T) {
-						var got bytes.Buffer
-						if err := run(path, cfg, &got); err != nil {
-							t.Fatal(err)
-						}
-						if got.String() != want {
-							t.Fatalf("%s: output differs from the reference", name)
-						}
-					})
+					// Both row loops, because they compute the row's address differently and this sweep is the only test that finds a byte-offset off-by-one. `hash` and `both` share these two loops, so two arms cover four.
+					for _, fold := range []string{"slice", "ptr"} {
+						cfg := defaults()
+						cfg.Workers, cfg.BufKiB, cfg.SegKiB, cfg.Split, cfg.IO, cfg.Fold = workers, bufKiB, bufKiB, split, io, fold
+						name := fmt.Sprintf("%s/%s/%s/workers=%d/buf=%dKiB", split, io, fold, workers, bufKiB)
+						t.Run(name, func(t *testing.T) {
+							var got bytes.Buffer
+							if err := run(path, cfg, &got); err != nil {
+								t.Fatal(err)
+							}
+							if got.String() != want {
+								t.Fatalf("%s: output differs from the reference", name)
+							}
+						})
+					}
 				}
 			}
 		}
