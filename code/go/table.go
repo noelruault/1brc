@@ -17,7 +17,7 @@ type entry struct {
 
 // table is per-shard open addressing with linear probing: no lock, no atomic, no sharing, merged only when its shard is done.
 //
-// hashes is H5 (03-technique-recon.md:63): when it is non-nil the probe walks an array of 8-byte hashes instead of 32-byte entries, so the array a miss touches is a quarter of the size.
+// hashes is H5 (03-technique-recon.md:63): when it is non-nil the probe walks an array of 8-byte hashes instead of 48-byte entries, so the array a miss touches is a sixth of the size.
 // The mode is one branch per row, taken identically in both layouts, so the comparison between them stays fair.
 type table struct {
 	hashes []uint64

@@ -1,0 +1,142 @@
+# 06 — cross-disciplinary transfer, data companion
+# Every number in 06-cross-disciplinary-transfer.md is either re-derived here from a recorded
+# command, or cited to an earlier report's companion. This file records only what THIS report
+# measured for the first time; everything else names its source report.
+
+session: 2026-09-01, git branch 1brc-loop
+power:   Now drawing from 'Battery Power' / -InternalBattery-0 42%; discharging; 4:42 remaining
+load:    17:43  up 1 day,  8:02, 18 users, load averages: 3.27 3.03 3.07
+NOTE:    battery => every timing taken in this session is PROVISIONAL per spec.md:42.
+         This report takes NO new timings; the load/power line is recorded because the
+         machine facts below (core classes, cache sizes) are read from the same session.
+
+================================================================================
+1. THE CORE-CLASS FACT — this machine is heterogeneous, and no earlier report says so
+================================================================================
+
+$ sysctl hw.ncpu hw.nperflevels hw.perflevel0.name hw.perflevel0.logicalcpu \
+        hw.perflevel0.l2cachesize hw.perflevel1.name hw.perflevel1.logicalcpu \
+        hw.perflevel1.l2cachesize hw.cachelinesize hw.l1dcachesize hw.memsize
+hw.ncpu: 15
+hw.nperflevels: 2
+hw.perflevel0.name: Super
+hw.perflevel0.logicalcpu: 5
+hw.perflevel0.l2cachesize: 16777216
+hw.perflevel1.name: Performance
+hw.perflevel1.logicalcpu: 10
+hw.perflevel1.l2cachesize: 8388608
+hw.cachelinesize: 128
+hw.l1dcachesize: 65536
+hw.memsize: 25769803776
+
+Read verbatim. Darwin orders perflevels highest-performance-first, so perflevel0 ("Super",
+5 cores, 16 MiB L2) is the fast class and perflevel1 ("Performance", 10 cores, 8 MiB L2)
+is the slower one. The RATIO of their throughputs is NOT measured here and no claim in the
+report depends on a specific value for it.
+
+$ system_profiler SPDisplaysDataType | grep -i 'Chipset\|Cores'
+      Chipset Model: Apple M5 Pro
+      Total Number of Cores: 16          # GPU cores
+
+================================================================================
+2. THE TABLE ENTRY SIZE — measured, and it corrects a number published five times
+================================================================================
+
+Throwaway test dropped into 1brc/code/go as zz_sz_test.go, run, and deleted:
+
+    func TestSizes(t *testing.T) {
+        fmt.Println("entry", unsafe.Sizeof(entry{}))
+        fmt.Println("bits17 entries bytes", (1<<17)*unsafe.Sizeof(entry{}))
+        fmt.Println("bits17 hashes bytes", (1<<17)*8)
+        fmt.Println("bits14 entries bytes", (1<<14)*unsafe.Sizeof(entry{}))
+    }
+
+$ go test -run TestSizes -v ./...
+entry 48
+bits17 entries bytes 6291456
+bits17 hashes bytes 1048576
+bits14 entries bytes 786432
+
+So on darwin/arm64 `entry` is 48 bytes, not 32: key []byte (24) + min int32 (4) + max int32 (4)
++ sum int64 (8) + count int32 (4) = 44, padded to 48 by the 8-byte alignment of sum.
+
+  1<<17 entry array  = 6.00 MiB   (published as 4 MiB at five sites — see CORRECTIONS.md C4)
+  1<<17 hash array   = 1.00 MiB   (published correctly)
+  1<<14 entry array  = 768 KiB    (published as 512 KiB in E-07's prediction)
+  split-array ratio  = 6.00 / 1.00 = 6x, not the "quarter" published in E-03 and table.go
+
+Derived from the two facts together, and this is the transfer that uses them: fifteen shards
+each own a 6.00 MiB entry array, so the fifteen tables are 90.0 MiB of live allocation and
+the five Super cores share 16 MiB of L2 while the ten Performance cores share 8 MiB. A single
+shard's table does not fit either L2. Only ~413 of its 131,072 slots are ever touched, which
+is why E-07 still measured the BIG table winning; the point for the transfer report is that
+the array's SIZE and the working set's size are two different numbers and only the second one
+was ever argued about.
+
+================================================================================
+3. SOURCE URLS — checked to resolve on 2026-09-01, HTTP status recorded
+================================================================================
+
+$ for u in ...; do printf "%s  " "$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 -L "$u")"; echo "$u"; done
+200  https://db.in.tum.de/~leis/papers/morsels.pdf
+200  https://www.vldb.org/pvldb/vol11/p2209-kersten.pdf
+200  https://cmph.sourceforge.net/papers/esa09.pdf
+200  https://www.gnu.org/software/gperf/manual/gperf.html
+200  https://developer.apple.com/metal/Metal-Shading-Language-Specification.pdf
+200  https://developer.apple.com/documentation/metal/gpu_devices_and_work_submission
+200  https://github.com/marcelroed/gigatoken
+200  https://github.com/gunnarmorling/1brc
+200  https://github.com/bcgsc/ntHash
+200  https://github.com/axboe/liburing
+200  https://man7.org/linux/man-pages/man7/io_uring.7.html
+200  https://doc.dpdk.org/guides/prog_guide/
+403  https://academic.oup.com/bioinformatics/article/32/22/3492/2525592   (publisher blocks curl)
+403  https://academic.oup.com/bioinformatics/article/20/18/3363/202143    (publisher blocks curl)
+
+The two 403s are the publisher's bot wall, not dead links. Their metadata was confirmed
+through Crossref instead, which is the authoritative registry for the DOI:
+
+$ curl -s "https://api.crossref.org/works/10.1093/bioinformatics/bth408" | \
+    python3 -c "import json,sys; d=json.load(sys.stdin)['message']; print(d['title'][0],'|',d.get('container-title'),'|',d.get('issued'))"
+Reducing storage requirements for biological sequence comparison | ['Bioinformatics'] | {'date-parts': [[2004, 7, 15]]}
+
+$ curl -s "https://api.crossref.org/works/10.1093/bioinformatics/btw397" | \
+    python3 -c "import json,sys; d=json.load(sys.stdin)['message']; print(d['title'][0],'|',d.get('container-title'),'|',d.get('issued'))"
+ntHash: recursive nucleotide hashing | ['Bioinformatics'] | {'date-parts': [[2016, 7, 16]]}
+
+PROVENANCE RULE APPLIED HERE: the mechanism descriptions in the report are written from
+the author's prior reading of these lines of work, NOT from primary text fetched in this
+session (only the two Crossref records and the HTTP statuses above were fetched). Every
+mechanism claim in the report is therefore labelled `[unfetched]` at its site, and no
+NUMBER is taken from any of them. The numbers in the report all come from this repo's own
+companions: 02-baseline-data.txt, 04-asm-kernels-data.txt, 05-go-techniques-data.txt and
+07-experiment-ledger-data.txt.
+
+================================================================================
+4. THE ARITHMETIC IN THE REPORT, RE-DERIVABLE
+================================================================================
+
+Heterogeneous static split, the bound in candidate C1. Let the fast class run at rate r_f and
+the slow class at r_s, five and ten cores, and let the whole file be one unit of work.
+
+  equal split:        every worker gets 1/15; the wall clock is set by the slowest,
+                      T_equal = (1/15) / r_s
+  weighted split:     ranges proportional to rate; all workers finish together,
+                      T_weighted = 1 / (5*r_f + 10*r_s)
+  ratio               T_equal / T_weighted = (5*r_f + 10*r_s) / (15*r_s) = (1/3)*(r_f/r_s) + 2/3
+
+  r_f/r_s = 1.0  ->  1.000   (homogeneous: weighting buys nothing, as it must)
+  r_f/r_s = 1.1  ->  1.033
+  r_f/r_s = 1.3  ->  1.100
+  r_f/r_s = 1.5  ->  1.167
+  r_f/r_s = 2.0  ->  1.333
+
+DERIVED, not measured: it assumes the work is perfectly divisible, the file is uniform, and
+compute is the binding constraint. r_f/r_s for this machine is UNKNOWN and measuring it is
+step one of the experiment.
+
+Idle-core arithmetic, quoted from 07-experiment-ledger.md's "Where v1 stands" and not re-measured
+here: 19.657 s of user CPU over 1.742 s of wall clock is 11.28 cores busy of 15, 75.2%.
+If double buffering (candidate C5) closed the whole gap and nothing else changed, the same CPU
+work over 15 busy cores would be 19.657/15 = 1.310 s. That is a CEILING on that one change under
+an assumption the report states; it is not a prediction that it will be reached.

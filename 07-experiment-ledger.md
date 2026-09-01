@@ -38,8 +38,8 @@ Derived, from the same run: 19.657 s of user CPU for 1.742 s of wall clock is **
 
 ### E-03 — splitting the hash array from the entry array (H5)
 
-- **Idea:** probe an array of 8-byte hashes instead of 32-byte entries, so a miss touches a quarter as much memory.
-- **Prediction** (H5): **≥10%** better on the 10k-station file, **≈0%** on the 413 one. `05-go-techniques.md` sharpened the mechanism: at 1<<17 buckets the entry array is 4 MiB touched at random and the hash array is 1 MiB.
+- **Idea:** probe an array of 8-byte hashes instead of 48-byte entries [CORRECTED, C4: published as 32-byte], so a miss touches a sixth as much memory [CORRECTED, C4: published as "a quarter"].
+- **Prediction** (H5): **≥10%** better on the 10k-station file, **≈0%** on the 413 one. `05-go-techniques.md` sharpened the mechanism: at 1<<17 buckets the entry array is 6.00 MiB touched at random [CORRECTED, C4: published as 4 MiB] and the hash array is 1 MiB.
 - **Measured, invocation B (1b, 413 stations):** combined **1.667 s** [1.643-1.685], split **1.743 s** [1.726-1.769]. Split is **4.6% slower**, disjoint. At 100m the ranges overlap.
 - **Verdict: SPLIT — the 413 half is KILLED-on-numbers** (against 1.667 s), **the 10k half is PARKED and untested**, because there is no 1-billion-row 10,000-station file: the 10k stressor is a 10m file, where nothing is I/O bound and no wall-clock verdict is meaningful. The flag stays (`-table split`). **Revive trigger:** generate a 1b 10k-station file (the generator does 725 MB/s, so ~20 s) and re-run; that is also the only condition under which `05-go-techniques.md`'s working-set hypothesis can be tested end to end.
 
@@ -67,7 +67,7 @@ Derived, from the same run: 19.657 s of user CPU for 1.742 s of wall clock is **
 ### E-07 — table size: 1<<14 against 1<<17 buckets
 
 - **Idea:** `05-go-techniques.md` measured load factor mattering (8.5% on the 10k key set) and working-set size plausibly mattering the other way.
-- **Prediction:** 1<<14 might win on the 413 set, where 413 entries make load factor irrelevant and a 512 KiB array beats a 4 MiB one.
+- **Prediction:** 1<<14 might win on the 413 set, where 413 entries make load factor irrelevant and a 768 KiB array beats a 6.00 MiB one [CORRECTED, C4: published as 512 KiB against 4 MiB].
 - **Measured, invocation B (1b):** 1<<17 **1.667 s**, 1<<14 **1.787 s** [1.765-1.812]. The bigger table is **7.2% faster**, disjoint — against the prediction. At 100m the small table wins by 7.1%, disjoint. Another arm whose direction inverts with scale.
 - **Verdict: KEEP 1<<17.** The mechanism is not established. Hypothesis for a later round: with 15 shards live, more buckets means fewer probe collisions in *aggregate*, and the entry array's size stops mattering because only ~413 lines of it are ever hot.
 
@@ -98,3 +98,12 @@ Ordered by the size of the gap each could close. The gap to shut is **0.742 s**,
 8. **A 1b 10,000-station file** to settle E-03's parked half and `05-go-techniques.md`'s working-set hypothesis. ~20 s of generation.
 9. **Go's runtime map for the 10k case**: measured 3.7% FASTER than the best open-addressing arm on 10k names single-threaded (`05-go-techniques.md`). Never tested end-to-end, and would need item 8 first.
 10. **The merge and the output.** 10,000 stations means 10,000 `map` inserts per shard at drain time and a sort; at 413 stations it is invisible, at 10k it may not be. Unmeasured.
+
+### Added by `06-cross-disciplinary-transfer.md`
+
+Four hypotheses, each borrowed from a field that solves the same shape of problem. They are numbered H-11 to H-14 so that the hypothesis id and the queue position are the same number; H1-H7 belong to `03-technique-recon.md` and H8-H10 are deliberately never issued, so a reader who meets an H-11 does not go looking for an H8 that was never written. The report also killed three candidates and parked two; those are not queue items and live in `06` and `PARKED.md`.
+
+11. **H-11 — a static split weighted by core class.** This machine has two: 5 "Super" cores with 16 MiB L2 and 10 "Performance" cores with 8 MiB (`06-cross-disciplinary-transfer-data.txt` §1), and `reader.go` hands all 15 an equal share. Borrowed from morsel-driven parallelism, minus the dynamic dispatch that E-02 already killed here. **Prediction, derived:** if the fast class runs at `r` times the slow one, weighting is worth `(r/3 + 2/3)x` the equal-split wall clock — 3.3% at `r = 1.1`, 10.0% at `r = 1.3`, 16.7% at `r = 1.5`. `r` is unmeasured; measure it on a resident buffer first, then run the weighted split at 1b.
+12. **H-12 — vectorize the table probe, not only the scan.** Compute a batch of hashes, issue all their bucket loads, then resolve, turning one dependent-load chain into N overlappable misses. Borrowed from vectorized query execution. **Prediction:** under 3% at 413 stations (0.3% load factor, the hot set stays in L2), over 10% at 10,000. The interesting half needs item 8.
+13. **H-13 — a quotiented 32-byte entry.** Replace the 24-byte `[]byte` key header with an inline 8-byte prefix and a side array for the full name: 48 bytes becomes 32, the probed array shrinks 1.5x, and the hot compare is one word instead of a pointer chase. Borrowed from k-mer count tables. **Prediction:** 0 to 4% at 413. Deliberately close to E-03, which lost 4.6% doing something adjacent; the difference is that this adds no second array in the HIT path, and if it loses too then the neighbourhood is exhausted rather than untried.
+14. **H-14 — double-buffer each worker.** `foldRange` calls `ReadAt`, waits, then folds, in one goroutine, alternating; a reader goroutine filling buffer B while the fold runs on buffer A makes the overlap explicit instead of leaving the OS to cover one worker's read with another's compute. Borrowed from DPDK's fill-while-you-process. **Prediction:** 5% up to a ceiling of 25% — 19.657 s of CPU over 15 busy cores is 1.310 s against the measured 1.742 s, which assumes every idle core is idle because of a read stall and is therefore a ceiling, not a forecast. Largest single-mechanism candidate found by the transfer pass.
