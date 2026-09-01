@@ -287,6 +287,24 @@ func TestTableProbesPastAFullBucketRun(t *testing.T) {
 	}
 }
 
+// TestTableTooSmallErrorsInsteadOfHanging pins the one failure mode a linear probe has: with every bucket occupied the probe loop has no exit, so a table smaller than the key set must return an error rather than spin forever.
+func TestTableTooSmallErrorsInsteadOfHanging(t *testing.T) {
+	var body bytes.Buffer
+	for i := range 200 {
+		fmt.Fprintf(&body, "station-%03d;1.%d\n", i, i%10)
+	}
+	for _, split := range []bool{false, true} {
+		// Six bits is 64 buckets for 200 keys: it must fill and then fail.
+		err := newTable(6, split).fold(body.Bytes(), true, 0)
+		if err == nil {
+			t.Fatalf("split=%v: a 64-bucket table accepted 200 stations", split)
+		}
+		if !strings.Contains(err.Error(), "buckets are occupied") {
+			t.Fatalf("split=%v: wrong error: %v", split, err)
+		}
+	}
+}
+
 func TestRunReportsBadInput(t *testing.T) {
 	cfg := defaults()
 	if err := run(filepath.Join(t.TempDir(), "absent.txt"), cfg, &bytes.Buffer{}); err == nil {

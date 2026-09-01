@@ -34,8 +34,12 @@ func newTable(bits int, split bool) *table {
 	return t
 }
 
-// update folds one reading into the table. h indexes, and in split mode is also stored with its low bit forced so that zero can mean "empty"; two hashes that differ only in that bit are separated by the full key compare anyway.
-func (t *table) update(h uint64, name []byte, v int32) {
+// update folds one reading into the table and reports false when the table is FULL, which is the one way a linear probe can fail: with no empty slot the probe loop never ends, and a hang is a worse failure than an error.
+// h indexes, and in split mode is also stored with its low bit forced so that zero can mean "empty"; two hashes that differ only in that bit are separated by the full key compare anyway.
+func (t *table) update(h uint64, name []byte, v int32) bool {
+	if t.size == len(t.e) {
+		return false
+	}
 	i := h & t.mask
 	if t.hashes != nil {
 		hv := h | 1
@@ -44,11 +48,11 @@ func (t *table) update(h uint64, name []byte, v int32) {
 			case 0:
 				t.hashes[i] = hv
 				t.insert(int(i), name, v)
-				return
+				return true
 			case hv:
 				if bytes.Equal(t.e[i].key, name) {
 					t.merge(int(i), v)
-					return
+					return true
 				}
 			}
 			i = (i + 1) & t.mask
@@ -57,11 +61,11 @@ func (t *table) update(h uint64, name []byte, v int32) {
 	for {
 		if t.e[i].key == nil {
 			t.insert(int(i), name, v)
-			return
+			return true
 		}
 		if bytes.Equal(t.e[i].key, name) {
 			t.merge(int(i), v)
-			return
+			return true
 		}
 		i = (i + 1) & t.mask
 	}
@@ -118,7 +122,9 @@ func (t *table) fold(data []byte, fastParse bool, base int64) error {
 			}
 		}
 		name := data[pos : pos+sep]
-		t.update(hashWord(binary.LittleEndian.Uint64(data[pos:]), sep), name, v)
+		if !t.update(hashWord(binary.LittleEndian.Uint64(data[pos:]), sep), name, v) {
+			return t.fullError(base + int64(pos))
+		}
 		pos += sep + 1 + next
 	}
 	for pos < len(data) {
@@ -131,7 +137,9 @@ func (t *table) fold(data []byte, fastParse bool, base int64) error {
 			return rowError(base+int64(pos), data[pos:])
 		}
 		name := data[pos : pos+sep]
-		t.update(hashName(name), name, v)
+		if !t.update(hashName(name), name, v) {
+			return t.fullError(base + int64(pos))
+		}
 		pos += sep + 1 + next
 	}
 	return nil
@@ -158,6 +166,10 @@ func (t *table) drain(into map[string]*gen.Accumulator) {
 		a.Sum += gen.Tenths(e.sum)
 		a.Count += int64(e.count)
 	}
+}
+
+func (t *table) fullError(offset int64) error {
+	return fmt.Errorf("byte %d: all %d table buckets are occupied; raise -bits", offset, len(t.e))
 }
 
 func rowError(offset int64, rest []byte) error {
