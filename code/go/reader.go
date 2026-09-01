@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"syscall"
+	"time"
 	"unsafe"
 
 	gen "github.com/noelruault/research/1brc/code/gen"
@@ -18,6 +20,31 @@ const fNoCache = 48
 
 // madvWillNeed is darwin's MADV_WILLNEED. syscall has no Madvise on darwin, so the raw call it is.
 const madvWillNeed = 3
+
+// phasesOn splits each worker's wall clock into blocked-in-read against folding, so the ledger's queue item 3 ("11.5 of 15 cores busy — I/O wait, the merge, or shard skew?") is answered by measurement.
+// Off by default because the default binary is the one being timed: 13.8 GB at 4 MiB is ~3,290 chunks, so the two clock reads per chunk are ~0.02% of 1.6 s, but an unpriced change to the timed path is not worth the convenience.
+var phasesOn bool
+
+var (
+	phaseRead   atomic.Int64
+	phaseFold   atomic.Int64
+	phaseChunks atomic.Int64
+)
+
+// reportPhases writes the split to stderr. workerWall is one entry per worker, so the spread across it IS the shard skew, and read+fold against the max tells how much of the wall clock a fill-ahead worker (H-14) could hide.
+func reportPhases(w io.Writer, workerWall []time.Duration, merge time.Duration) {
+	wall := append([]time.Duration(nil), workerWall...)
+	sort.Slice(wall, func(i, j int) bool { return wall[i] < wall[j] })
+	var sum time.Duration
+	for _, d := range wall {
+		sum += d
+	}
+	read, fold := time.Duration(phaseRead.Load()), time.Duration(phaseFold.Load())
+	fmt.Fprintf(w, "phases: workers=%d chunks=%d read=%v fold=%v read/(read+fold)=%.1f%%\n",
+		len(wall), phaseChunks.Load(), read, fold, 100*float64(read)/float64(read+fold))
+	fmt.Fprintf(w, "phases: worker wall min=%v p50=%v max=%v sum=%v skew(max/min)=%.3f merge=%v\n",
+		wall[0], wall[len(wall)/2], wall[len(wall)-1], sum, float64(wall[len(wall)-1])/float64(wall[0]), merge)
+}
 
 // config is one flag per open hypothesis rather than per tunable: 03-technique-recon.md's H1 (work distribution), H5 (table layout) and H7 (mmap end-to-end), plus H3's parse, which 04-asm-kernels.md left split by input.
 type config struct {
@@ -137,10 +164,16 @@ func aggregateFile(path string, cfg config) (map[string]*gen.Accumulator, error)
 		return nil, fmt.Errorf("unknown -split %q, want static or cursor", cfg.Split)
 	}
 
+	workerWall := make([]time.Duration, cfg.Workers)
+
 	for w := range cfg.Workers {
 		wg.Add(1)
 		go func(w int) {
 			defer wg.Done()
+			if phasesOn {
+				start := time.Now()
+				defer func() { workerWall[w] = time.Since(start) }()
+			}
 			t := newTable(cfg.Bits, cfg.Table == "split")
 			tables[w] = t
 			var buf []byte
@@ -172,11 +205,15 @@ func aggregateFile(path string, cfg config) (map[string]*gen.Accumulator, error)
 		}
 	}
 
+	mergeStart := time.Now()
 	result := make(map[string]*gen.Accumulator, 1<<14)
 	for _, t := range tables {
 		if t != nil {
 			t.drain(result)
 		}
+	}
+	if phasesOn {
+		reportPhases(os.Stderr, workerWall, time.Since(mergeStart))
 	}
 	return result, nil
 }
@@ -215,7 +252,15 @@ func foldRange(f *os.File, t *table, lo, hi, size int64, buf []byte, k kernel, f
 	off, carry, first := readStart, 0, true
 	for off < readEnd {
 		want := min(int64(len(buf)-carry), readEnd-off)
+		var t0 time.Time
+		if phasesOn {
+			t0 = time.Now()
+		}
 		n, err := f.ReadAt(buf[carry:carry+int(want)], off)
+		if phasesOn {
+			phaseRead.Add(int64(time.Since(t0)))
+			phaseChunks.Add(1)
+		}
 		if err != nil && err != io.EOF {
 			return err
 		}
@@ -243,19 +288,30 @@ func foldRange(f *os.File, t *table, lo, hi, size int64, buf []byte, k kernel, f
 		if base+int64(avail) >= hi {
 			// The straddling row may still be incomplete when the buffer is no bigger than the range; in that case fall through, fold the whole rows, and read the rest of it next time round.
 			if end, ok := rangeEnd(buf[:avail], base, hi, from); ok {
-				return t.fold(buf[from:end], k, fastParse, base+int64(from))
+				return foldTimed(t, buf[from:end], k, fastParse, base+int64(from))
 			}
 		}
 		nl := bytes.LastIndexByte(buf[:avail], '\n')
 		if nl < from {
 			return fmt.Errorf("byte %d: row longer than the %d-byte buffer", base, len(buf))
 		}
-		if err := t.fold(buf[from:nl+1], k, fastParse, base+int64(from)); err != nil {
+		if err := foldTimed(t, buf[from:nl+1], k, fastParse, base+int64(from)); err != nil {
 			return err
 		}
 		carry = copy(buf, buf[nl+1:avail])
 	}
 	return fmt.Errorf("byte %d: the row crossing the end of the range is longer than %d bytes", hi, maxRow)
+}
+
+// foldTimed is t.fold with the -phases clock around it, so read and fold are measured at the same two call sites that alternate in the loop.
+func foldTimed(t *table, chunk []byte, k kernel, fastParse bool, base int64) error {
+	if !phasesOn {
+		return t.fold(chunk, k, fastParse, base)
+	}
+	t0 := time.Now()
+	err := t.fold(chunk, k, fastParse, base)
+	phaseFold.Add(int64(time.Since(t0)))
+	return err
 }
 
 // foldMapped is foldRange over a mapping: the same ownership rule, no copy, no buffer, and the same one-byte lookback so that a range starting exactly on a row boundary keeps that row.

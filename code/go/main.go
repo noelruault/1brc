@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"runtime"
+	"runtime/pprof"
 
 	gen "github.com/noelruault/research/1brc/code/gen"
 )
@@ -28,9 +29,29 @@ func main() {
 	flag.StringVar(&cfg.Parse, "parse", "branchless", "temperature parse: branchless | scalar (H3)")
 	flag.StringVar(&cfg.Kernel, "kernel", "row", "tokenizer: row | batch-swar | batch-neon (go-v2-kernels)")
 	flag.BoolVar(&cfg.Madvise, "madvise", false, "MADV_WILLNEED the whole mapping first (-io mmap only, H7's rescue)")
+	cpuprofile := flag.String("cpuprofile", "", "write a pprof CPU profile here (go-opt-round-2)")
+	flag.BoolVar(&phasesOn, "phases", false, "report the read/fold/merge split and the shard skew on stderr (go-opt-round-2)")
 	flag.Parse()
 
-	if err := run(*in, cfg, os.Stdout); err != nil {
+	if *cpuprofile != "" {
+		f, err := os.Create(*cpuprofile)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "1brc:", err)
+			os.Exit(1)
+		}
+		if err := pprof.StartCPUProfile(f); err != nil {
+			fmt.Fprintln(os.Stderr, "1brc:", err)
+			os.Exit(1)
+		}
+		defer f.Close()
+	}
+
+	err := run(*in, cfg, os.Stdout)
+	// Stopped before os.Exit rather than deferred: a deferred stop never runs on the error path, which leaves a truncated profile that looks like a real one.
+	if *cpuprofile != "" {
+		pprof.StopCPUProfile()
+	}
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "1brc:", err)
 		os.Exit(1)
 	}
