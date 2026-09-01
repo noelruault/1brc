@@ -19,6 +19,7 @@ var adversarialNames = []string{
 func indexSemicolonVariants() map[string]func([]byte) int {
 	return map[string]func([]byte) int{
 		"swar":   SWARIndexSemicolon,
+		"neon":   NEONIndexSemicolon,
 		"stdlib": func(b []byte) int { return bytes.IndexByte(b, ';') },
 	}
 }
