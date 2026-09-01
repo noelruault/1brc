@@ -1,0 +1,68 @@
+# experiment 2026-09-01T204544Z
+hypothesis: queue item 15 follow-up - the read buffer swept down, confirming the one disjoint reversal
+prediction: 202421Z measured 1 MiB at -6.34% against the 4 MiB incumbent, disjoint, with system time -27.2%; if the mechanism is that smaller reads cost less kernel time then 512 KiB is at least as fast as 1 MiB, 2 MiB lands between, and 1 MiB reproduces its win to within 2 points
+file:     measurements-1b.txt   runs: 5   warmup: 1   cooldown: 20s
+commit:   dcf85720ccd57f536df14c8a7c74a0119ca26f9f
+go:       go version go1.27.0 darwin/arm64
+machine:  Apple M5 Pro, hw.ncpu 15, 24 GiB, 26.5.2 arm64
+hyperfine: hyperfine 1.20.0
+power:    'AC Power' 	100%; charged; 0:00 remaining present: true
+load:     22:45  up 1 day, 13:04, 22 users, load averages: 1.84 3.09 3.35
+
+$ leadin.discard: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+$ default.a: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+$ buf2M: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -buf 2048 > /dev/null
+$ buf1M: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -buf 1024 > /dev/null
+$ buf512K: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -buf 512 > /dev/null
+$ default.b: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+
+Benchmark 1: leadin.discard
+  Time (mean ± σ):      1.611 s ±  0.022 s    [User: 18.435 s, System: 2.075 s]
+  Range (min … max):    1.585 s …  1.643 s    5 runs
+ 
+Benchmark 2: default.a
+  Time (mean ± σ):      1.639 s ±  0.041 s    [User: 18.537 s, System: 2.101 s]
+  Range (min … max):    1.589 s …  1.698 s    5 runs
+ 
+Benchmark 3: buf2M
+  Time (mean ± σ):      1.577 s ±  0.028 s    [User: 18.485 s, System: 1.947 s]
+  Range (min … max):    1.547 s …  1.621 s    5 runs
+ 
+Benchmark 4: buf1M
+  Time (mean ± σ):      1.510 s ±  0.005 s    [User: 18.604 s, System: 1.559 s]
+  Range (min … max):    1.504 s …  1.519 s    5 runs
+ 
+Benchmark 5: buf512K
+  Time (mean ± σ):      1.570 s ±  0.006 s    [User: 18.770 s, System: 1.808 s]
+  Range (min … max):    1.566 s …  1.581 s    5 runs
+ 
+Benchmark 6: default.b
+  Time (mean ± σ):      1.609 s ±  0.023 s    [User: 18.492 s, System: 2.081 s]
+  Range (min … max):    1.590 s …  1.645 s    5 runs
+ 
+Summary
+  buf1M ran
+    1.04 ± 0.01 times faster than buf512K
+    1.04 ± 0.02 times faster than buf2M
+    1.07 ± 0.02 times faster than default.b
+    1.07 ± 0.01 times faster than leadin.discard
+    1.08 ± 0.03 times faster than default.a
+
+== ledger row skeleton, paste into 07-experiment-ledger.md and write the verdict ==
+
+### E-NN — queue item 15 follow-up - the read buffer swept down, confirming the one disjoint reversal
+
+- **Idea:** 
+- **Prediction:** 202421Z measured 1 MiB at -6.34% against the 4 MiB incumbent, disjoint, with system time -27.2%; if the mechanism is that smaller reads cost less kernel time then 512 KiB is at least as fast as 1 MiB, 2 MiB lands between, and 1 MiB reproduces its win to within 2 points
+- **Measured, invocation 2026-09-01T204544Z (1b, 5 runs, one hyperfine invocation):**
+
+  | Command | Mean [s] | Min [s] | Max [s] | Relative |
+  |:---|---:|---:|---:|---:|
+  | `leadin.discard` | 1.611 ± 0.022 | 1.585 | 1.643 | 1.07 ± 0.01 |
+  | `default.a` | 1.639 ± 0.041 | 1.589 | 1.698 | 1.08 ± 0.03 |
+  | `buf2M` | 1.577 ± 0.028 | 1.547 | 1.621 | 1.04 ± 0.02 |
+  | `buf1M` | 1.510 ± 0.005 | 1.504 | 1.519 | 1.00 |
+  | `buf512K` | 1.570 ± 0.006 | 1.566 | 1.581 | 1.04 ± 0.01 |
+  | `default.b` | 1.609 ± 0.023 | 1.590 | 1.645 | 1.07 ± 0.02 |
+
+- **Verdict:** 

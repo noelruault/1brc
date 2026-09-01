@@ -357,3 +357,98 @@ Arithmetic in the E-12 to E-18 rows, evaluated rather than written by hand:
   buf1M      raw  +2.76%  slot-adjusted  -4.49%
   bits14     raw  +7.20%  slot-adjusted  -1.86%
   pagecache  raw  +5.52%  slot-adjusted  -5.35%
+
+==============================================================================
+go-opt-round-2-item15 — invocations L to O, the owed re-measure and what it cost
+==============================================================================
+
+Four invocations were started for one queue item. Two produced no verdicts and are recorded because
+the reason each failed is the result: L never timed anything, M timed everything and was unreadable.
+
+L  bench/2026-09-01T195758Z-queue-item-15-invocation-B-re-measured-with-the-cooldown-on.txt
+   ABORTED, no timings. hyperfine stopped at "Benchmark 1" with:
+     Error: The preparation command terminated with a non-zero exit code.
+   The preparation command is the 20 s cooldown `sleep`. Reproduced NOT the failure but its absence:
+   `hyperfine --prepare "sleep 1" --warmup 0 --runs 2 "true"` exits 0 both in the foreground and
+   backgrounded, so the sleep is not refused here. What kills it is the cycle that owns it dying: the
+   sleep is in the process group, the signal reaches it, and hyperfine reads the non-zero exit as a
+   failed preparation. An invocation of this size CANNOT be run in the foreground of a tool call that
+   caps at 600 s, because it needs about 1050 s.
+
+M  bench/2026-09-01T200150Z-queue-item-15-invocation-B-re-measured-with-the-cooldown-on.txt
+   VOID: the bracket failed. default.a 2.094 s [1.872-2.531] against default.b 1.644 s [1.608-1.687]
+   for a byte-identical arm, all five of slot 1's runs above all five of slot 8's.
+
+  $ python3 -c "
+  a,b=2.094,1.644; u=[18.989,18.910,18.602,18.761,19.032,18.305,18.607,18.469]; sy=[2.776,1.773,2.318,2.838,2.285,2.278,2.081,2.182]
+  print('bracket %.2f%%  user CPU spread %.2f%%  monotonic %s  slot1 sys %+.1f%%'%((a-b)/b*100,(max(u)-min(u))/min(u)*100,all(u[i]<u[i+1] for i in range(7)),(sy[0]-sy[7])/sy[7]*100))"
+  bracket 27.37%  user CPU spread 3.97%  monotonic False  slot1 sys +27.2%
+
+   That is NOT E-16's drift and the distinction is what makes the invocation void rather than
+   correctable: E-16's signature is user CPU rising monotonically with slot, and here user CPU is flat
+   and unordered while the entire excess sits in SYSTEM time. No per-slot constant describes it, so
+   nothing can be subtracted off. M's arms 2-7 are printed beside N's below: they disagree by up to 12
+   points, which is the evidence that M was contaminated throughout and not only in slot 1.
+
+N  bench/2026-09-01T202421Z-queue-item-15-invocation-B-re-measured-with-a-sacrificial-lead-in-arm-absorbing-slot-1.txt
+   bash 1brc/scripts/experiment.sh -i 'queue item 15 - invocation B re-measured, with a sacrificial lead-in arm absorbing slot 1' \
+     -p 'the 200150Z bracket disagreed by 27.37% with user CPU flat (slot 1 only +2.82% over slot 8, no monotonic trend) and the whole excess in system time (+27.2%), so the cost is specific to the FIRST timed arm and not E-16 drift; with a discarded lead-in absorbing slot 1, the two default arms should bracket the invocation within 3%' \
+     -a 'leadin.discard=' -a 'default.a=' -a 'buf1M=-buf 1024' -a 'bits14=-bits 14' -a 'pagecache=-nocache=false' \
+     -a 'split=-table split' -a 'scalar=-parse scalar' -a 'cursor=-split cursor' -a 'default.b='
+
+  $ python3 -c "
+  A={'buf1M':1.506,'bits14':1.601,'pagecache':1.611,'split':1.632,'scalar':1.590,'cursor':1.609}; a,b=1.618,1.608
+  for k,m in A.items(): print('%-10s vs default.a %+6.2f%%  vs default.b %+6.2f%%'%(k,(m-a)/a*100,(m-b)/b*100))
+  print('bracket %.2f%%  lead-in 1.624 vs default.b %+.2f%%'%((a-b)/b*100,(1.624-b)/b*100))"
+  buf1M      vs default.a  -6.92%  vs default.b  -6.34%
+  bits14     vs default.a  -1.05%  vs default.b  -0.44%
+  pagecache  vs default.a  -0.43%  vs default.b  +0.19%
+  split      vs default.a  +0.87%  vs default.b  +1.49%
+  scalar     vs default.a  -1.73%  vs default.b  -1.12%
+  cursor     vs default.a  -0.56%  vs default.b  +0.06%
+  bracket 0.62%  lead-in 1.624 vs default.b +1.00%
+
+   The prediction that a lead-in would restore the bracket came true and its stated MECHANISM is
+   falsified by the same invocation: the lead-in ran at 1.624 s, within 1.00% of the last arm, so slot
+   1 is not inherently expensive and nothing was absorbed. M's slot 1 was contaminated by something
+   transient that this invocation did not have. The lead-in is therefore NOT established as a fix, and
+   what is established is that the bracket detects the condition — which is the only reason M was
+   caught at all.
+
+   M's arms against M's own last arm, beside N's, both relative to the arm being replaced:
+
+     arm          M (bracket 27.37%, VOID)   N (bracket 0.62%)
+     buf1M                 -0.36%                  -6.34%
+     bits14                +7.12%                  -0.44%
+     pagecache            +12.04%                  +0.19%
+     split                 +9.37%                  +1.49%
+     scalar                +5.35%                  -1.12%
+     cursor                -0.49%                  +0.06%
+
+O  bench/2026-09-01T204544Z-queue-item-15-follow-up-the-read-buffer-swept-down-confirming-the-one-disjoint-reversal.txt
+   bash 1brc/scripts/experiment.sh -i 'queue item 15 follow-up - the read buffer swept down, confirming the one disjoint reversal' \
+     -p '202421Z measured 1 MiB at -6.34% against the 4 MiB incumbent, disjoint, with system time -27.2%; if the mechanism is that smaller reads cost less kernel time then 512 KiB is at least as fast as 1 MiB, 2 MiB lands between, and 1 MiB reproduces its win to within 2 points' \
+     -a 'leadin.discard=' -a 'default.a=' -a 'buf2M=-buf 2048' -a 'buf1M=-buf 1024' -a 'buf512K=-buf 512' -a 'default.b='
+
+  $ python3 -c "
+  one=1.510
+  for n,v in [('4 MiB (default.b)',1.609),('2 MiB',1.577),('512 KiB',1.570)]: print('%-18s %+.2f%% against 1 MiB'%(n,(v-one)/one*100))
+  print('bracket %.2f%%   1 MiB reproducibility 1.506 -> 1.510 = %.2f%%'%((1.639-1.609)/1.609*100,(1.510-1.506)/1.506*100))"
+  4 MiB (default.b)  +6.56% against 1 MiB
+  2 MiB              +4.44% against 1 MiB
+  512 KiB            +3.97% against 1 MiB
+  bracket 1.86%   1 MiB reproducibility 1.506 -> 1.510 = 0.27%
+
+   1 MiB is a MINIMUM, not a direction: 512 KiB below it and 2 MiB above it both lose, and 1 MiB's
+   range [1.504-1.519] is disjoint from every other arm in the invocation. Its system time is 1.559 s
+   against 2.081 s for 4 MiB (-25.1%) while user CPU is flat, so the cost being removed is kernel-side.
+   The prediction was right about 1 MiB reproducing (0.27%) and WRONG about 512 KiB, which it expected
+   to be at least as fast; "smaller reads cost less kernel time" is therefore not the mechanism, and
+   the mechanism remains unestablished.
+
+Wiring proof for the new default, since the pinning test asserts a constant and could not otherwise
+tell a wired constant from an unused one:
+
+  $ ./bin/1brc -h 2>&1 | grep -A1 '^  -buf'
+    -buf int
+      	per-worker read buffer, KiB (pread only) (default 1024)

@@ -1,0 +1,82 @@
+# experiment 2026-09-01T200150Z
+hypothesis: queue item 15 - invocation B re-measured with the cooldown on
+prediction: E-18 derives -4.49% for buf 1M, -1.86% for bits 14 and -5.35% for the page cache once the slot bias is subtracted; if that extrapolation holds, at least one of the three changes sign here
+file:     measurements-1b.txt   runs: 5   warmup: 1   cooldown: 20s
+commit:   dcf85720ccd57f536df14c8a7c74a0119ca26f9f
+go:       go version go1.27.0 darwin/arm64
+machine:  Apple M5 Pro, hw.ncpu 15, 24 GiB, 26.5.2 arm64
+hyperfine: hyperfine 1.20.0
+power:    'AC Power' 	100%; charged; 0:00 remaining present: true
+load:     22:01  up 1 day, 12:20, 22 users, load averages: 3.27 3.79 3.84
+
+$ default.a: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+$ buf1M: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -buf 1024 > /dev/null
+$ bits14: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -bits 14 > /dev/null
+$ pagecache: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -nocache=false > /dev/null
+$ split: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -table split > /dev/null
+$ scalar: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -parse scalar > /dev/null
+$ cursor: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -split cursor > /dev/null
+$ default.b: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+
+Benchmark 1: default.a
+  Time (mean ± σ):      2.094 s ±  0.265 s    [User: 18.989 s, System: 2.776 s]
+  Range (min … max):    1.872 s …  2.531 s    5 runs
+ 
+Benchmark 2: buf1M
+  Time (mean ± σ):      1.638 s ±  0.076 s    [User: 18.910 s, System: 1.773 s]
+  Range (min … max):    1.547 s …  1.717 s    5 runs
+ 
+Benchmark 3: bits14
+  Time (mean ± σ):      1.761 s ±  0.048 s    [User: 18.602 s, System: 2.318 s]
+  Range (min … max):    1.700 s …  1.810 s    5 runs
+ 
+Benchmark 4: pagecache
+  Time (mean ± σ):      1.842 s ±  0.055 s    [User: 18.761 s, System: 2.838 s]
+  Range (min … max):    1.748 s …  1.884 s    5 runs
+ 
+Benchmark 5: split
+  Time (mean ± σ):      1.798 s ±  0.066 s    [User: 19.032 s, System: 2.285 s]
+  Range (min … max):    1.741 s …  1.901 s    5 runs
+ 
+Benchmark 6: scalar
+  Time (mean ± σ):      1.732 s ±  0.104 s    [User: 18.305 s, System: 2.278 s]
+  Range (min … max):    1.661 s …  1.912 s    5 runs
+ 
+Benchmark 7: cursor
+  Time (mean ± σ):      1.636 s ±  0.028 s    [User: 18.607 s, System: 2.081 s]
+  Range (min … max):    1.609 s …  1.678 s    5 runs
+ 
+Benchmark 8: default.b
+  Time (mean ± σ):      1.644 s ±  0.032 s    [User: 18.469 s, System: 2.182 s]
+  Range (min … max):    1.608 s …  1.687 s    5 runs
+ 
+Summary
+  cursor ran
+    1.00 ± 0.05 times faster than buf1M
+    1.01 ± 0.03 times faster than default.b
+    1.06 ± 0.07 times faster than scalar
+    1.08 ± 0.03 times faster than bits14
+    1.10 ± 0.04 times faster than split
+    1.13 ± 0.04 times faster than pagecache
+    1.28 ± 0.16 times faster than default.a
+
+== ledger row skeleton, paste into 07-experiment-ledger.md and write the verdict ==
+
+### E-NN — queue item 15 - invocation B re-measured with the cooldown on
+
+- **Idea:** 
+- **Prediction:** E-18 derives -4.49% for buf 1M, -1.86% for bits 14 and -5.35% for the page cache once the slot bias is subtracted; if that extrapolation holds, at least one of the three changes sign here
+- **Measured, invocation 2026-09-01T200150Z (1b, 5 runs, one hyperfine invocation):**
+
+  | Command | Mean [s] | Min [s] | Max [s] | Relative |
+  |:---|---:|---:|---:|---:|
+  | `default.a` | 2.094 ± 0.265 | 1.872 | 2.531 | 1.28 ± 0.16 |
+  | `buf1M` | 1.638 ± 0.076 | 1.547 | 1.717 | 1.00 ± 0.05 |
+  | `bits14` | 1.761 ± 0.048 | 1.700 | 1.810 | 1.08 ± 0.03 |
+  | `pagecache` | 1.842 ± 0.055 | 1.748 | 1.884 | 1.13 ± 0.04 |
+  | `split` | 1.798 ± 0.066 | 1.741 | 1.901 | 1.10 ± 0.04 |
+  | `scalar` | 1.732 ± 0.104 | 1.661 | 1.912 | 1.06 ± 0.07 |
+  | `cursor` | 1.636 ± 0.028 | 1.609 | 1.678 | 1.00 |
+  | `default.b` | 1.644 ± 0.032 | 1.608 | 1.687 | 1.01 ± 0.03 |
+
+- **Verdict:** 
