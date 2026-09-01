@@ -1,0 +1,22 @@
+# experiment 2026-09-01T195758Z
+hypothesis: queue item 15 - invocation B re-measured with the cooldown on
+prediction: E-18 derives -4.49% for buf 1M, -1.86% for bits 14 and -5.35% for the page cache once the slot bias is subtracted; if that extrapolation holds, at least one of the three changes sign here
+file:     measurements-1b.txt   runs: 5   warmup: 1   cooldown: 20s
+commit:   05d67235ebad77a949ddb363e3850fd0af9f1b6d
+go:       go version go1.27.0 darwin/arm64
+machine:  Apple M5 Pro, hw.ncpu 15, 24 GiB, 26.5.2 arm64
+hyperfine: hyperfine 1.20.0
+power:    'AC Power' 	100%; charged; 0:00 remaining present: true
+load:     21:57  up 1 day, 12:16, 22 users, load averages: 3.25 3.12 3.61
+
+$ default.a: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+$ buf1M: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -buf 1024 > /dev/null
+$ bits14: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -bits 14 > /dev/null
+$ pagecache: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -nocache=false > /dev/null
+$ split: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -table split > /dev/null
+$ scalar: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -parse scalar > /dev/null
+$ cursor: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -split cursor > /dev/null
+$ default.b: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+
+Benchmark 1: default.a
+Error: The preparation command terminated with a non-zero exit code. Append ' || true' to the command if you are sure that this can be ignored.
