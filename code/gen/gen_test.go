@@ -50,8 +50,7 @@ func TestSynthetic10kIsALegalMaximalKeySet(t *testing.T) {
 }
 
 // The rules constrain names to 1..100 bytes with no ';' and no '\n'
-// (README.md:421). A generator that violates them produces a file that is not a
-// valid instance of the challenge.
+// (README.md:421). A generator that violates them produces a file that is not a valid instance of the challenge.
 func assertLegalNames(t *testing.T, stations []Station) {
 	t.Helper()
 	for _, st := range stations {
@@ -66,8 +65,7 @@ func assertLegalNames(t *testing.T, stations []Station) {
 	}
 }
 
-// The whole reason this generator exists rather than upstream's is that the file
-// must be re-derivable from a recorded command.
+// The whole reason this generator exists rather than upstream's is that the file must be re-derivable from a recorded command.
 func TestWriteIsReproducibleAndSeedDependent(t *testing.T) {
 	var a, b, c bytes.Buffer
 	if _, err := Write(&a, Official413(), 5000, 10.0, 1); err != nil {
@@ -127,8 +125,7 @@ func TestWrittenRowsSatisfyTheRules(t *testing.T) {
 }
 
 // The clamp is unreachable on the official means (the bound sits beyond 6 sigma),
-// so it is exercised here with a station parked at the edge. Without this, the
-// clamp would be untested code claiming a guarantee.
+// so it is exercised here with a station parked at the edge. Without this, the clamp would be untested code claiming a guarantee.
 func TestWriteClampsToLegalRange(t *testing.T) {
 	var buf bytes.Buffer
 	extreme := []Station{{Name: "Edge", Mean: 500.0}, {Name: "Cold", Mean: -500.0}}
@@ -171,12 +168,7 @@ func TestAggregateAndWriteResult(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Abha: min -23.0, max 59.2, sum 54.2 over 3 -> 18.066... -> 18.1
-	// Abéché: min -0.1, max 0.0, sum -0.1 over 2. The exact quotient -0.05 is a
-	// tie, but float64 cannot hold it: -0.1/2 is a hair below -0.05, so the
-	// result is -0.1 rather than -0.0. The reference implementation's arithmetic
-	// chain lands in the same place, which is the point of reproducing it
-	// operation for operation instead of computing the "mathematically right"
-	// answer.
+	// Abéché: min -0.1, max 0.0, sum -0.1 over 2. The exact quotient -0.05 is a tie, but float64 cannot hold it: -0.1/2 is a hair below -0.05, so the result is -0.1 rather than -0.0. The reference implementation's arithmetic chain lands in the same place, which is the point of reproducing it operation for operation instead of computing the "mathematically right" answer.
 	want := "{Abha=-23.0/18.1/59.2, Abéché=-0.1/-0.1/0.0, Zürich=9.3/9.3/9.3}\n"
 	if got := out.String(); got != want {
 		t.Errorf("got  %s\nwant %s", got, want)
@@ -184,15 +176,29 @@ func TestAggregateAndWriteResult(t *testing.T) {
 }
 
 func TestAggregateRejectsMalformedInput(t *testing.T) {
-	for _, in := range []string{"no-separator\n", "Abha;abc\n", "Abha;1\n", "Abha;\n"} {
+	// "12.0" is the case that matters: it has no separator but IS a valid temperature, so only the separator check stops it. Without that check the name slice goes negative and the reference panics.
+	for _, in := range []string{"no-separator\n", "12.0\n", "Abha;abc\n", "Abha;1\n", "Abha;\n"} {
 		if _, err := Aggregate(strings.NewReader(in)); err == nil {
 			t.Errorf("Aggregate(%q) returned no error; malformed input must not be silently aggregated", in)
 		}
 	}
 }
 
-// End to end: what the generator writes, the reference must read back without
-// complaint, with every station accounted for.
+// Regression: ParseTenths checks shape, not magnitude, so out-of-range values were aggregated into a plausible-looking result instead of stopping the run.
+func TestAggregateRejectsOutOfRangeTemperatures(t *testing.T) {
+	for _, in := range []string{"Abha;500.0\n", "Abha;-100.0\n", "Abha;100.0\n"} {
+		if _, err := Aggregate(strings.NewReader(in)); err == nil {
+			t.Errorf("Aggregate(%q) returned no error; the value is outside the legal range", in)
+		}
+	}
+	for _, in := range []string{"Abha;99.9\n", "Abha;-99.9\n", "Abha;0.0\n"} {
+		if _, err := Aggregate(strings.NewReader(in)); err != nil {
+			t.Errorf("Aggregate(%q) rejected a legal boundary value: %v", in, err)
+		}
+	}
+}
+
+// End to end: what the generator writes, the reference must read back without complaint, with every station accounted for.
 func TestGeneratedFileAggregatesCleanly(t *testing.T) {
 	var buf bytes.Buffer
 	if _, err := Write(&buf, Official413(), 50000, 10.0, 11); err != nil {

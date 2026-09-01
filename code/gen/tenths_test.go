@@ -10,8 +10,7 @@ import (
 
 var oneDecimal = regexp.MustCompile(`^-?\d+\.\d$`)
 
-// Every legal temperature must print with exactly one fractional digit and never
-// as "-0.0"; those are the two shape guarantees the output format rests on.
+// Every legal temperature must print with exactly one fractional digit and never as "-0.0"; those are the two shape guarantees the output format rests on.
 func TestAppendTenthsShape(t *testing.T) {
 	for v := minTenths; v <= maxTenths; v++ {
 		got := string(AppendTenths(nil, v))
@@ -41,9 +40,25 @@ func TestAppendTenthsKnownValues(t *testing.T) {
 	}
 }
 
-// The challenge mandates roundTowardPositive (README.md:426). Go's math.Round is
-// half-away-from-zero, so it must NOT be used; this pins both the correct answer
-// and the fact that the obvious stdlib call is the wrong one.
+// Regression: a two-digit assumption here printed 1000 tenths as ":0.0", corrupting output instead of failing.
+func TestAppendTenthsBeyondLegalRange(t *testing.T) {
+	for _, tc := range []struct {
+		in   Tenths
+		want string
+	}{
+		{1000, "100.0"}, {-1000, "-100.0"}, {5000, "500.0"}, {12345, "1234.5"}, {-12345, "-1234.5"},
+	} {
+		got := string(AppendTenths(nil, tc.in))
+		if got != tc.want {
+			t.Errorf("AppendTenths(%d) = %q, want %q", tc.in, got, tc.want)
+		}
+		if !oneDecimal.MatchString(got) {
+			t.Errorf("AppendTenths(%d) = %q, not a one-decimal number", tc.in, got)
+		}
+	}
+}
+
+// The challenge mandates roundTowardPositive (README.md:426). Go's math.Round is half-away-from-zero, so it must NOT be used; this pins both the correct answer and the fact that the obvious stdlib call is the wrong one.
 func TestRoundToTenthsTiesTowardPositive(t *testing.T) {
 	for _, tc := range []struct {
 		in            float64
@@ -53,10 +68,7 @@ func TestRoundToTenthsTiesTowardPositive(t *testing.T) {
 		{-2.45, -24, -25},    // -2.45*10 is exactly -24.5: a true tie, and the two rules disagree
 		{-24.55, -245, -246}, // likewise
 		{2.45, 25, 25},       // positive ties agree
-		// -0.05 looks like a tie and is not: the nearest float64 to -0.05 is
-		// slightly below it, so -0.05*10 is -0.5000000000000000277 and both rules
-		// round to -0.1. Whether a decimal is a tie depends on its float64
-		// representation, not on how it is written.
+		// -0.05 looks like a tie and is not: the nearest float64 to -0.05 is slightly below it, so -0.05*10 is -0.5000000000000000277 and both rules round to -0.1. Whether a decimal is a tie depends on its float64 representation, not on how it is written.
 		{-0.05, -1, -1},
 		{0.05, 1, 1},
 	} {
@@ -69,8 +81,7 @@ func TestRoundToTenthsTiesTowardPositive(t *testing.T) {
 	}
 }
 
-// Measured divergence: formatting a float64 mean with %.1f, the obvious Go
-// approach, emits "-0.0" where the reference emits "0.0".
+// Measured divergence: formatting a float64 mean with %.1f, the obvious Go approach, emits "-0.0" where the reference emits "0.0".
 func TestFloatFormattingEmitsNegativeZero(t *testing.T) {
 	if got := fmt.Sprintf("%.1f", -0.04); got != "-0.0" {
 		t.Fatalf(`%%.1f of -0.04 = %q, want "-0.0" (premise of the integer-tenths design)`, got)
@@ -81,10 +92,7 @@ func TestFloatFormattingEmitsNegativeZero(t *testing.T) {
 }
 
 // Java orders station names by UTF-16 code unit; Go's sort.Strings orders by
-// UTF-8 byte. They agree across the BMP and disagree above U+FFFF, because a
-// supplementary character encodes as a high surrogate (0xD800-0xDBFF) in UTF-16
-// but as bytes 0xF0+ in UTF-8. Pinned so a future "arbitrary station name" test
-// does not read the divergence as a bug in our sort.
+// UTF-8 byte. They agree across the BMP and disagree above U+FFFF, because a supplementary character encodes as a high surrogate (0xD800-0xDBFF) in UTF-16 but as bytes 0xF0+ in UTF-8. Pinned so a future "arbitrary station name" test does not read the divergence as a bug in our sort.
 func TestUTF16OrderDivergesAboveBMP(t *testing.T) {
 	bmp, supp := "￿-station", "\U0001F525station"
 

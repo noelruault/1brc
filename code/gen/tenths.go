@@ -3,16 +3,24 @@
 // thing: the exact arithmetic of a one-fractional-digit temperature.
 package gen
 
-import "math"
+import (
+	"math"
+	"strconv"
+)
 
 // Tenths is a temperature in tenths of a degree.
 //
 // The challenge guarantees every input value has exactly one fractional digit
 // (01-definition.md, README.md:422), so the whole problem lives on an integer
-// grid and never needs float64. Aggregating in float64 instead costs accuracy
-// that shows up in the last printed digit: summing ~2.4M one-decimal values per
-// station drifts by ~1e-2, which is close enough to the 0.05 rounding threshold
-// to flip a station's mean.
+// grid and never needs float64.
+//
+// It is NOT chosen because float64 accumulation loses the answer: measured, a
+// float64 sum over one station's share of a billion rows drifts by ~9.2e-07 and
+// still recovers the exact tenths (TestFloat64AccumulationDriftIsSmall). It is
+// chosen because it is exact by construction rather than by a margin that
+// depends on the data, and because it makes the two rounding traps in
+// 01-definition.md -- ties toward positive infinity, and "-0.0" -- unreachable
+// rather than merely unlikely.
 type Tenths int64
 
 // Temperature bounds from README.md:422, inclusive: every legal value is a whole
@@ -35,19 +43,21 @@ func RoundToTenths(v float64) Tenths {
 
 // AppendTenths appends t as a decimal with exactly one fractional digit.
 //
-// The sign is taken from the integer, so "-0.0" cannot be produced. Formatting
-// the equivalent float64 with %.1f would print "-0.0" for any small negative
-// value, which no correct output ever contains.
+// The sign is emitted separately and the magnitude formatted unsigned, so "-0.0"
+// cannot be produced. Formatting the equivalent float64 with %.1f would print
+// "-0.0" for any small negative value, which no correct output ever contains.
+//
+// The whole part is not assumed to fit in two digits. It always does for legal
+// data, but an earlier version encoded that assumption and turned an
+// out-of-range value into unflagged garbage (1000 tenths printed as ":0.0"),
+// which is the worst possible failure for a reference implementation.
 func AppendTenths(dst []byte, t Tenths) []byte {
 	if t < 0 {
 		dst = append(dst, '-')
 		t = -t
 	}
-	whole, frac := int64(t)/10, int64(t)%10
-	if whole >= 10 {
-		dst = append(dst, byte('0'+whole/10))
-	}
-	return append(dst, byte('0'+whole%10), '.', byte('0'+frac))
+	dst = strconv.AppendInt(dst, int64(t)/10, 10)
+	return append(dst, '.', byte('0'+int64(t)%10))
 }
 
 // ParseTenths reads a temperature of the form -?\d+\.\d without going through

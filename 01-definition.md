@@ -49,7 +49,7 @@ The rules give the rounding *direction*; the exact arithmetic only exists in the
 
 These five behaviours are **derived by reading the cited Java source**, not confirmed against a running JVM: this machine has only a Java 8 JRE (no `javac`, and the baseline needs records and `nextGaussian(mean, sd)` from Java 17+), so the upstream program cannot be executed here. Installing a JDK to close that gap is recorded as a revive trigger rather than done now.
 
-What *is* measured is the Go side of each divergence, which is the half that can actually break our implementation. `01-definition-data.txt` holds the output of `1brc/code/gen/semantics_probe_test.go`, which pins: Go's `math.Round` disagreeing with Java's `Math.round` on every negative tie, `fmt.Sprintf("%.1f", -0.04)` emitting `-0.0`, and Go's byte-order string sort disagreeing with Java's UTF-16 order above U+FFFF. Those three are the traps; the reference implementation is written to avoid all three by construction.
+What *is* measured is the Go side of each divergence, which is the half that can actually break our implementation. `01-definition-data.txt` holds the output of `1brc/code/gen/tenths_test.go`, which pins: Go's `math.Round` disagreeing with Java's `Math.round` on every negative tie, `fmt.Sprintf("%.1f", -0.04)` emitting `-0.0`, and Go's byte-order string sort disagreeing with Java's UTF-16 order above U+FFFF. Those three are the traps; the reference implementation is written to avoid all three by construction.
 
 ## How the official evaluation was run
 
