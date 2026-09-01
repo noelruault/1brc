@@ -650,6 +650,9 @@ func TestQuotSeparatesNamesOneWordCannotTell(t *testing.T) {
 	}{
 		// Same first eight bytes, same length, different tail: only the full compare through keys can tell these apart.
 		{"shared 8-byte prefix", "Villaviciosa1;1.0\nVillaviciosa2;2.0\nVillaviciosa1;3.0\n"},
+		// Nine bytes is the shortest length the word cannot hold, so it is where the long/short boundary is decided rather than merely crossed.
+		// The 413 set cannot express it: its one 8-byte-prefix collision is Alexandra/Alexandria, which nlen separates by length.
+		{"shared 8-byte prefix at nine bytes", "Alexandra;1.0\nAlexandro;2.0\nAlexandra;3.0\n"},
 		// "ab" and "ab\x00" mask to the same word; only the length separates them.
 		{"NUL-padded short name", "ab;1.0\nab\x00;2.0\nab;3.0\n"},
 		// A one-byte name against the empty name, which masks to zero exactly like an empty bucket.
