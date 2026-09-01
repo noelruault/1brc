@@ -54,7 +54,7 @@ The baseline every entry below was measured against, so a future reader can see 
 
 **Depends on.** (a) The 0.3% load factor, which is `-bits 17` (E-07's KEEP) against 413 stations; a 10,000-station file makes it 7.6% and a smaller table makes it worse still. (b) Nothing having attributed measurable time to `table.update`'s probe — queue item 3's profile has not been run. (c) The 413-station key set being what the headline is measured on.
 
-**Revive when.** Either: the profile from queue item 3 attributes a measurable share of cycles to the probe or to `bytes.Equal`; or a 1b 10,000-station file (queue item 8) exists and the probe is measurably hot on it; or H-13 (the quotiented entry) wins, which would show the bucket layout is worth spending on at all.
+**Revive when.** Either: the profile from queue item 3 attributes a measurable share of cycles to the probe or to `bytes.Equal`; or a 1b 10,000-station file (queue item 8) exists and the probe is measurably hot on it. ~~or H-13 (the quotiented entry) wins, which would show the bucket layout is worth spending on at all~~ — **this third trigger FIRED NEGATIVE: E-28 measured the quotiented entry at +5.34% of wall, so the bucket layout is not worth spending on at 413 stations and only the 10k regime can revive this.**
 
 **Cost to revive.** Moderate, about a day. The build is only 413 keys, so the construction is not the risk; the fallback path is, because it is the branch that never runs on clean data and therefore the branch no byte-compare will ever exercise — the same shape as the three first-vs-last-`;` bugs this study has already shipped.
 

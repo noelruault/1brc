@@ -797,3 +797,41 @@ Benchmark 4: both
   
   headline move: 1.424 s (E-25) -> 1.233 s = -13.41%
   but the incumbent re-measured HERE is 1.398/1.399 s, not 1.424, so the honest delta is the in-invocation one above
+
+== §R: queue item 13, the quotiented 32-byte bucket, and the arithmetic on it ======
+
+Raw output: 1brc/bench/2026-09-01T223508Z-queue-item-13-H-13-quotiented-32-byte-bucket.txt
+Every arm byte-compared on BOTH key sets before any timing (6 check-correctness passes, 3 arms x 2 files), by experiment.sh's own per-arm gate.
+
+Benchmark 1: incumbent.a
+  Time (mean ± σ):      1.229 s ±  0.005 s    [User: 14.660 s, System: 1.587 s]
+  Range (min … max):    1.226 s …  1.238 s    5 runs
+  Warning: Statistical outliers were detected. Consider re-running this benchmark on a quiet system without any interferences from other programs.
+Benchmark 2: quot
+  Time (mean ± σ):      1.301 s ±  0.009 s    [User: 15.684 s, System: 1.550 s]
+  Range (min … max):    1.290 s …  1.310 s    5 runs
+Benchmark 3: incumbent.b
+  Time (mean ± σ):      1.241 s ±  0.002 s    [User: 14.686 s, System: 1.615 s]
+  Range (min … max):    1.239 s …  1.243 s    5 runs
+Summary
+
+$ python3 -c '...'   (every figure below is this script's output, not prose arithmetic)
+  bracket spread: (1.241-1.229)/1.229 = 0.98%  -> under the 3% refusal threshold, invocation is quotable
+  quot vs incumbent.a: +5.86%   vs incumbent.b: +4.83%   vs bracket mean 1.2350: +5.34%
+  user CPU  vs .a: +6.98%   vs .b: +6.80%   (both channels agree in SIGN: a real CPU regression)
+  ranges: quot min 1.290 > incumbent.a max 1.238 and incumbent.b max 1.243  -> disjoint from both = True
+
+  compute floors (user CPU / 15 cores):
+    incumbent.a  0.9773 s
+    quot         1.0456 s   <- ABOVE the 1.000 s target; E-27 had taken the floor 18.8 ms under it
+    incumbent.b  0.9791 s
+  per-row CPU: quot 15.68 ns  vs incumbent.a 14.66 ns   (budget for a 1.000 s wall on 15 cores: 15.00 ns)
+
+  cross-invocation control, this invocation vs E-27 (1.233 s wall, 14.718 s user CPU):
+    wall      incumbent.a -0.32%   incumbent.b +0.65%
+    user CPU  incumbent.a -0.39%   incumbent.b -0.22%
+    -> the refactor the arm needed (update carries the masked word, one layout dispatch branch,
+       hashWord split into maskWord+mixWord) costs the incumbent nothing measurable
+
+  load factor at 413 stations in 1<<17 buckets: 0.315%  -> one cache line per probe whatever the bucket size
+  official names 8 bytes or shorter: 272 of 413 = 65.9% resolve on the inline word; the other 34.1% take the side-array load

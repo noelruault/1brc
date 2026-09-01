@@ -1,0 +1,49 @@
+# experiment 2026-09-01T223508Z
+hypothesis: queue item 13 - H-13 quotiented 32-byte bucket
+prediction: the probed array goes 48 to 32 bytes and 65.9% of official rows (272 of 413 names <= 8 bytes) resolve on the inline word with no side-array touch, against a memequal costing 7.2-8.7% of compute and (*table).update 12.4% (C9). Predicted 0-4% of wall, ledger H-13. Keep bar pre-registered: disjoint from BOTH bracket arms or it is not kept.
+file:     measurements-1b.txt   runs: 5   warmup: 1   cooldown: 20s
+commit:   ba1c6e780a7959ea0c34b54b59a597346bf3f232
+go:       go version go1.27.0 darwin/arm64
+machine:  Apple M5 Pro, hw.ncpu 15, 24 GiB, 26.5.2 arm64
+hyperfine: hyperfine 1.20.0
+power:    'AC Power' 	100%; charged; 0:00 remaining present: true
+load:      0:35  up 1 day, 14:54, 22 users, load averages: 2.76 2.32 2.08
+
+$ incumbent.a: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+$ quot: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -table quot > /dev/null
+$ incumbent.b: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+
+Benchmark 1: incumbent.a
+  Time (mean ± σ):      1.229 s ±  0.005 s    [User: 14.660 s, System: 1.587 s]
+  Range (min … max):    1.226 s …  1.238 s    5 runs
+ 
+  Warning: Statistical outliers were detected. Consider re-running this benchmark on a quiet system without any interferences from other programs.
+ 
+Benchmark 2: quot
+  Time (mean ± σ):      1.301 s ±  0.009 s    [User: 15.684 s, System: 1.550 s]
+  Range (min … max):    1.290 s …  1.310 s    5 runs
+ 
+Benchmark 3: incumbent.b
+  Time (mean ± σ):      1.241 s ±  0.002 s    [User: 14.686 s, System: 1.615 s]
+  Range (min … max):    1.239 s …  1.243 s    5 runs
+ 
+Summary
+  incumbent.a ran
+    1.01 ± 0.00 times faster than incumbent.b
+    1.06 ± 0.01 times faster than quot
+
+== ledger row skeleton, paste into 07-experiment-ledger.md and write the verdict ==
+
+### E-NN — queue item 13 - H-13 quotiented 32-byte bucket
+
+- **Idea:** 
+- **Prediction:** the probed array goes 48 to 32 bytes and 65.9% of official rows (272 of 413 names <= 8 bytes) resolve on the inline word with no side-array touch, against a memequal costing 7.2-8.7% of compute and (*table).update 12.4% (C9). Predicted 0-4% of wall, ledger H-13. Keep bar pre-registered: disjoint from BOTH bracket arms or it is not kept.
+- **Measured, invocation 2026-09-01T223508Z (1b, 5 runs, one hyperfine invocation):**
+
+  | Command | Mean [s] | Min [s] | Max [s] | Relative |
+  |:---|---:|---:|---:|---:|
+  | `incumbent.a` | 1.229 ± 0.005 | 1.226 | 1.238 | 1.00 |
+  | `quot` | 1.301 ± 0.009 | 1.290 | 1.310 | 1.06 ± 0.01 |
+  | `incumbent.b` | 1.241 ± 0.002 | 1.239 | 1.243 | 1.01 ± 0.00 |
+
+- **Verdict:** 
