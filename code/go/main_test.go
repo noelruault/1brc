@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"math/rand/v2"
 	"os"
@@ -9,13 +10,14 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"unsafe"
 
 	gen "github.com/noelruault/research/1brc/code/gen"
 )
 
 // defaults is what the binary runs with when nobody passes a flag; every test that is not about a strategy uses it, so a default that breaks correctness fails everything.
 func defaults() config {
-	return config{Workers: 4, BufKiB: 4096, SegKiB: 2048, Bits: 12, NoCache: false, Split: "static", Table: "combined", IO: "pread", Parse: "branchless", Kernel: "row"}
+	return config{Workers: 4, BufKiB: 4096, SegKiB: 2048, Bits: 12, NoCache: false, Split: "static", Table: "combined", IO: "pread", Parse: "branchless", Kernel: "row", Fold: "slice"}
 }
 
 // strategies is every combination of the four open hypotheses' flags. Correctness must hold for all of them or a benchmark of one arm is measuring a bug.
@@ -35,6 +37,12 @@ func strategies() []config {
 					c.Split, c.Table, c.IO, c.Kernel = split, layout, io, k
 					out = append(out, c)
 				}
+				// The -fold arms are word-parse only by the guard in aggregateFile, so they are swept beside the parses rather than crossed with them.
+				for _, fold := range []string{"hash", "ptr", "both"} {
+					c := defaults()
+					c.Split, c.Table, c.IO, c.Parse, c.Fold = split, layout, io, "word", fold
+					out = append(out, c)
+				}
 			}
 		}
 	}
@@ -42,7 +50,7 @@ func strategies() []config {
 }
 
 func (c config) label() string {
-	return fmt.Sprintf("%s/%s/%s/%s/%s", c.Split, c.Table, c.IO, c.Parse, c.Kernel)
+	return fmt.Sprintf("%s/%s/%s/%s/%s/%s", c.Split, c.Table, c.IO, c.Parse, c.Kernel, c.Fold)
 }
 
 // TestRunMatchesTheReferenceByteForByte is the whole correctness contract in miniature:
@@ -332,7 +340,7 @@ func TestTableLayoutsAgree(t *testing.T) {
 	for _, split := range []bool{false, true} {
 		for _, pk := range []parseKind{parseScalar, parseBranchless, parseWord} {
 			tab := newTable(9, split)
-			if err := tab.fold(data, kernelRow, pk, 0); err != nil {
+			if err := tab.fold(data, kernelRow, pk, foldSlice, 0); err != nil {
 				t.Fatalf("split=%v parse=%d: %v", split, pk, err)
 			}
 			got := map[string]*gen.Accumulator{}
@@ -372,7 +380,7 @@ func TestTableProbesPastAFullBucketRun(t *testing.T) {
 	for _, split := range []bool{false, true} {
 		// Eight bits is 256 buckets for 200 keys: a 78% load factor, where linear probing runs are long.
 		tab := newTable(8, split)
-		if err := tab.fold(data, kernelRow, parseBranchless, 0); err != nil {
+		if err := tab.fold(data, kernelRow, parseBranchless, foldSlice, 0); err != nil {
 			t.Fatal(err)
 		}
 		got := map[string]*gen.Accumulator{}
@@ -391,7 +399,7 @@ func TestTableTooSmallErrorsInsteadOfHanging(t *testing.T) {
 	}
 	for _, split := range []bool{false, true} {
 		// Six bits is 64 buckets for 200 keys: it must fill and then fail.
-		err := newTable(6, split).fold(body.Bytes(), kernelRow, parseBranchless, 0)
+		err := newTable(6, split).fold(body.Bytes(), kernelRow, parseBranchless, foldSlice, 0)
 		if err == nil {
 			t.Fatalf("split=%v: a 64-bucket table accepted 200 stations", split)
 		}
@@ -472,5 +480,100 @@ func TestTheDefaultOversubscribesTheCores(t *testing.T) {
 	cores := runtime.NumCPU()
 	if got := defaultWorkers(); got <= cores {
 		t.Fatalf("defaultWorkers() = %d on %d cores, want more: E-17 measured one-per-core 7.5%% slower", got, cores)
+	}
+}
+
+// TestIndexDelimAtAgreesWithIndexDelim runs the fused scan over the same corpus as the incumbent's own test and demands the same answer, plus the word it exists to hand back.
+// The corpus places each needle at every offset, because a scan that peels its first word can only get the peel wrong at one of them.
+func TestIndexDelimAtAgreesWithIndexDelim(t *testing.T) {
+	check := func(b []byte) {
+		t.Helper()
+		wantIdx, wantSemi := indexDelim(b)
+		gotIdx, gotSemi, w0 := indexDelimAt(unsafe.Pointer(unsafe.SliceData(b)), len(b))
+		if gotIdx != wantIdx || gotSemi != wantSemi {
+			t.Fatalf("%q: indexDelimAt = (%d,%v), indexDelim = (%d,%v)", b, gotIdx, gotSemi, wantIdx, wantSemi)
+		}
+		var want uint64
+		if len(b) >= 8 {
+			want = binary.LittleEndian.Uint64(b)
+		}
+		if w0 != want {
+			t.Fatalf("%q: w0 = %#x, want %#x", b, w0, want)
+		}
+	}
+	for n := range 40 {
+		base := bytes.Repeat([]byte("a"), n)
+		check(base)
+		for i := range n {
+			for _, c := range []byte{';', '\n'} {
+				b := append([]byte{}, base...)
+				b[i] = c
+				check(b)
+			}
+			if i+1 < n {
+				b := append([]byte{}, base...)
+				b[i], b[i+1] = '\n', ';'
+				check(b)
+			}
+		}
+	}
+}
+
+// foldArm folds data with one -fold arm and returns the reference's own rendering of the result, so two arms are compared on the bytes the binary would print rather than on map identity.
+func foldArm(t *testing.T, fk foldKind, data []byte) (string, error) {
+	t.Helper()
+	tab := newTable(12, false)
+	if err := tab.fold(data, kernelRow, parseWord, fk, 0); err != nil {
+		return "", err
+	}
+	got := map[string]*gen.Accumulator{}
+	tab.drain(got)
+	var out bytes.Buffer
+	if err := gen.WriteResult(&out, got); err != nil {
+		t.Fatal(err)
+	}
+	return out.String(), nil
+}
+
+// TestFoldArmsAgree is the sibling check every new row splitter in this repo owes before it ships: the three -fold arms must fold and REJECT byte for byte what the incumbent loop does, and agree with the reference where it accepts.
+// A ';' inside a name is in the corpus deliberately — that divergence has shipped three times here and no generated key set can express it — and so are two names sharing all eight hashed bytes, which is the only input that exercises the full compare the pointer walk builds with unsafe.Slice.
+func TestFoldArmsAgree(t *testing.T) {
+	pad := strings.Repeat("Hamburg;12.0\n", 24)
+	for _, tc := range []struct{ name, body string }{
+		{"clean", pad},
+		{"separator inside the name", pad + "a;b;1.0\n" + pad},
+		{"no separator at all", pad + "Hamburg 12.0\n" + pad},
+		{"empty name", pad + ";1.0\n" + pad},
+		{"names either side of the eight-byte hash", pad + "a;1.0\nabcdefg;2.0\nabcdefgh;3.0\nabcdefghi;4.0\n" + pad},
+		{"two names sharing all eight hashed bytes", pad + "AbcdefgH1;1.0\nAbcdefgH2;-1.0\nAbcdefgH1;3.0\n" + pad},
+		{"the range ends", pad + "Abha;-99.9\nAbha;99.9\nAbha;0.0\nAbha;-0.0\n" + pad},
+		{"out of range", pad + "Hamburg;100.0\n" + pad},
+		{"two decimals", pad + "Hamburg;12.00\n" + pad},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			data := []byte(tc.body)
+			want, wantErr := foldArm(t, foldSlice, data)
+			for _, fk := range []foldKind{foldHash, foldPtr, foldBoth} {
+				got, gotErr := foldArm(t, fk, data)
+				if (gotErr == nil) != (wantErr == nil) {
+					t.Fatalf("fold %d: err %v, incumbent err %v", fk, gotErr, wantErr)
+				}
+				if gotErr != nil && gotErr.Error() != wantErr.Error() {
+					t.Fatalf("fold %d: err %q, incumbent err %q", fk, gotErr, wantErr)
+				}
+				if got != want {
+					t.Fatalf("fold %d:\n got %q\nwant %q", fk, got, want)
+				}
+			}
+			if wantErr != nil {
+				if referenceError(tc.body) == nil {
+					t.Fatalf("every arm rejected %q and the reference accepted it", tc.name)
+				}
+				return
+			}
+			if ref := referenceOutput(t, tc.body); ref != want {
+				t.Fatalf("every arm agreed on %q and the reference says %q", want, ref)
+			}
+		})
 	}
 }

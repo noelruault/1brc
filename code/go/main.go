@@ -28,6 +28,7 @@ func main() {
 	flag.StringVar(&cfg.IO, "io", "pread", "reader: pread | mmap (H7)")
 	flag.StringVar(&cfg.Parse, "parse", defaultParse, "temperature parse and format check: branchless | scalar (H3) | word (E-25)")
 	flag.StringVar(&cfg.Kernel, "kernel", "row", "tokenizer: row | batch-swar | batch-neon (go-v2-kernels)")
+	flag.StringVar(&cfg.Fold, "fold", defaultFold, "row loop: slice | hash | ptr | both (queue items 1 and 5)")
 	flag.BoolVar(&cfg.Madvise, "madvise", false, "MADV_WILLNEED the whole mapping first (-io mmap only, H7's rescue)")
 	cpuprofile := flag.String("cpuprofile", "", "write a pprof CPU profile here (go-opt-round-2)")
 	flag.BoolVar(&phasesOn, "phases", false, "report the read/fold/merge split and the shard skew on stderr (go-opt-round-2)")
@@ -68,6 +69,9 @@ const defaultBufKiB = 1024
 // defaultParse is the fused parse-and-check, kept on E-25's measurement: 1.424 s against 1.498 s and 1.499 s for the two bracket arms, disjoint, with user CPU 6.33% lower for byte-identical output.
 // It is the one arm on this board that removed CPU rather than parallel efficiency, and the compute floor it leaves, 1.152 s, is still above the 1.000 s target.
 const defaultParse = "word"
+
+// defaultFold is the incumbent row loop, unchanged, and it stays that until an arm beats it disjointly: the other three values exist to be measured, not to be defaults in waiting.
+const defaultFold = "slice"
 
 func run(path string, cfg config, out io.Writer) error {
 	stations, err := aggregateFile(path, cfg)

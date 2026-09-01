@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/binary"
 	"math/bits"
+	"unsafe"
 
 	gen "github.com/noelruault/research/1brc/code/gen"
 )
@@ -43,6 +44,38 @@ func indexDelim(b []byte) (idx int, semi bool) {
 		}
 	}
 	return -1, false
+}
+
+// indexDelimAt is indexDelim over a raw pointer, handing back the FIRST word it loaded so the caller can hash the name from it instead of loading the same bytes again (queue item 1).
+//
+// The loop is rotated rather than given an i == 0 test, because a per-word branch to save a per-row load would cost more than it saves.
+// w0 is zero when n < 8 and no word was loaded, which is the tail's shape; callers there hash with hashName, not hashWord.
+func indexDelimAt(p unsafe.Pointer, n int) (idx int, semi bool, w0 uint64) {
+	i := 0
+	if n >= 8 {
+		w0 = *(*uint64)(p)
+		w := w0
+		for {
+			xs := w ^ semicolonBroadcast
+			xn := w ^ newlineBroadcast
+			m := ((xs-swarLow)&^xs | (xn-swarLow)&^xn) & swarHigh
+			if m != 0 {
+				k := i + bits.TrailingZeros64(m)>>3
+				return k, *(*byte)(unsafe.Add(p, k)) == ';', w0
+			}
+			i += 8
+			if i+8 > n {
+				break
+			}
+			w = *(*uint64)(unsafe.Add(p, i))
+		}
+	}
+	for ; i < n; i++ {
+		if c := *(*byte)(unsafe.Add(p, i)); c == ';' || c == '\n' {
+			return i, c == ';', w0
+		}
+	}
+	return -1, false, w0
 }
 
 const (
@@ -90,7 +123,12 @@ func nonDigitMask(w uint64) uint64 {
 // Each is load-bearing alone, measured by dropping one at a time: only the count rejects "100.0", only the sign byte rejects "\x005.0", only the digit lanes reject "1x.5", only the '\n' lane rejects "1.5x" and only the '.' lane rejects "1-5".
 // The one branch kept is parseTempBranchless's own dot > 28 guard, which a negative shift would otherwise panic on.
 func parseTempWord(b []byte) (tenths int32, next int, ok bool) {
-	w := binary.LittleEndian.Uint64(b)
+	return parseTempWordFrom(binary.LittleEndian.Uint64(b))
+}
+
+// parseTempWordFrom is parseTempWord for a caller that already holds the field's 8-byte word, which is the pointer walk (queue item 5).
+// The split is a refactor and nothing else: parseTempWord is the same function with the load in front of it, so the exhaustive differential test covers both.
+func parseTempWordFrom(w uint64) (tenths int32, next int, ok bool) {
 	dot := bits.TrailingZeros64(^w & parseDotBits)
 	if dot > 28 {
 		return 0, 0, false

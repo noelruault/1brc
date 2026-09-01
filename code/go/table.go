@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"unsafe"
 
 	gen "github.com/noelruault/research/1brc/code/gen"
 )
@@ -94,7 +95,7 @@ func (t *table) merge(i int, v int32) {
 //
 // Every kernel here over-reads 8 bytes, so each stops early and foldTail's scalar path closes the rest without ever over-reading: that is what removes any need for padded buffers or a guard page.
 // The kernel is chosen ONCE per buffer, because a per-row switch would charge every arm for the comparison the batch arms exist to remove.
-func (t *table) fold(data []byte, k kernel, pk parseKind, base int64) error {
+func (t *table) fold(data []byte, k kernel, pk parseKind, fk foldKind, base int64) error {
 	var (
 		pos int
 		err error
@@ -105,7 +106,16 @@ func (t *table) fold(data []byte, k kernel, pk parseKind, base int64) error {
 	case kernelBatchNEON:
 		pos, err = t.foldBatchNEON(data, base)
 	default:
-		pos, err = t.foldRows(data, pk, base)
+		switch fk {
+		case foldHash:
+			pos, err = t.foldRowsHash(data, base)
+		case foldPtr:
+			pos, err = t.foldRowsPtr(data, base, false)
+		case foldBoth:
+			pos, err = t.foldRowsPtr(data, base, true)
+		default:
+			pos, err = t.foldRows(data, pk, base)
+		}
 	}
 	if err != nil {
 		return err
@@ -150,6 +160,62 @@ func (t *table) foldRows(data []byte, pk parseKind, base int64) (int, error) {
 		}
 		name := data[pos : pos+sep]
 		if !t.update(hashWord(binary.LittleEndian.Uint64(data[pos:]), sep), name, v) {
+			return 0, t.fullError(base + int64(pos))
+		}
+		pos += sep + 1 + next
+	}
+	return pos, nil
+}
+
+// foldRowsHash is foldRows with the name's hash taken from the word the separator scan already loaded (queue item 1), and nothing else changed: same slice walk, same bounds, same parse.
+// It is the word-parse arm only, which is what the -fold guard in aggregateFile enforces, because the arm exists to be measured against the shape production runs.
+func (t *table) foldRowsHash(data []byte, base int64) (int, error) {
+	pos := 0
+	for pos+maxRow <= len(data) {
+		sep, semi, w0 := indexDelimAt(unsafe.Pointer(unsafe.SliceData(data[pos:])), len(data)-pos)
+		if sep < 0 || !semi {
+			return 0, rowError(base+int64(pos), data[pos:])
+		}
+		if pos+sep+9 > len(data) {
+			break
+		}
+		v, next, ok := parseTempWord(data[pos+sep+1:])
+		if !ok || !inRange(v) {
+			return 0, rowError(base+int64(pos), data[pos:])
+		}
+		name := data[pos : pos+sep]
+		if !t.update(hashWord(w0, sep), name, v) {
+			return 0, t.fullError(base + int64(pos))
+		}
+		pos += sep + 1 + next
+	}
+	return pos, nil
+}
+
+// foldRowsPtr walks the buffer with unsafe.Add instead of re-slicing it at every row (queue item 5), and takes the hash's word from the scan when fuse is set, which is queue item 1 on top of it.
+//
+// Every load is one the slice walk makes too and the loop keeps foldRows's own bound, so the fast path still stops maxRow short of the end and foldTail closes the rest.
+// data stays a parameter rather than a bare pointer so the buffer it points into is reachable for as long as the names handed to update are.
+func (t *table) foldRowsPtr(data []byte, base int64, fuse bool) (int, error) {
+	pos, n := 0, len(data)
+	p := unsafe.Pointer(unsafe.SliceData(data))
+	for pos+maxRow <= n {
+		row := unsafe.Add(p, pos)
+		sep, semi, w0 := indexDelimAt(row, n-pos)
+		if sep < 0 || !semi {
+			return 0, rowError(base+int64(pos), data[pos:])
+		}
+		if pos+sep+9 > n {
+			break
+		}
+		v, next, ok := parseTempWordFrom(*(*uint64)(unsafe.Add(row, sep+1)))
+		if !ok || !inRange(v) {
+			return 0, rowError(base+int64(pos), data[pos:])
+		}
+		if !fuse {
+			w0 = *(*uint64)(row)
+		}
+		if !t.update(hashWord(w0, sep), unsafe.Slice((*byte)(row), sep), v) {
 			return 0, t.fullError(base + int64(pos))
 		}
 		pos += sep + 1 + next

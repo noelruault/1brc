@@ -58,6 +58,7 @@ type config struct {
 	IO      string
 	Parse   string
 	Kernel  string
+	Fold    string
 	Madvise bool
 }
 
@@ -79,9 +80,17 @@ func aggregateFile(path string, cfg config) (map[string]*gen.Accumulator, error)
 	if err != nil {
 		return nil, err
 	}
+	fk, err := foldMode(cfg.Fold)
+	if err != nil {
+		return nil, err
+	}
 	// A batch kernel always parses branchlessly and checks the format with validTemp, so pairing it with any other -parse would silently measure something other than what the flags say.
 	if kern != kernelRow && pk != parseBranchless {
 		return nil, fmt.Errorf("-kernel %s has no %s parse arm; use -kernel row with -parse %s, or add -parse branchless", cfg.Kernel, cfg.Parse, cfg.Parse)
+	}
+	// The new fold arms are built against the shape production runs and nothing else, so a combination that would silently fall back to the incumbent loop is refused rather than measured.
+	if fk != foldSlice && (kern != kernelRow || pk != parseWord) {
+		return nil, fmt.Errorf("-fold %s needs -kernel row and -parse word, got -kernel %s -parse %s", cfg.Fold, cfg.Kernel, cfg.Parse)
 	}
 
 	f, err := os.Open(path)
@@ -187,9 +196,9 @@ func aggregateFile(path string, cfg config) (map[string]*gen.Accumulator, error)
 				}
 				var err error
 				if mapped != nil {
-					err = foldMapped(t, mapped, lo, hi, kern, pk)
+					err = foldMapped(t, mapped, lo, hi, kern, pk, fk)
 				} else {
-					err = foldRange(f, t, lo, hi, size, buf, kern, pk)
+					err = foldRange(f, t, lo, hi, size, buf, kern, pk, fk)
 				}
 				if err != nil {
 					errs[w] = err
@@ -239,6 +248,30 @@ func parseMode(name string) (parseKind, error) {
 	return 0, fmt.Errorf("unknown -parse %q, want branchless, scalar or word", name)
 }
 
+// foldKind selects how the row loop addresses the buffer and where the name's hash gets its word: the two queue items that attack this loop, separately and together.
+type foldKind int
+
+const (
+	foldSlice foldKind = iota
+	foldHash
+	foldPtr
+	foldBoth
+)
+
+func foldMode(name string) (foldKind, error) {
+	switch name {
+	case "slice":
+		return foldSlice, nil
+	case "hash":
+		return foldHash, nil
+	case "ptr":
+		return foldPtr, nil
+	case "both":
+		return foldBoth, nil
+	}
+	return 0, fmt.Errorf("unknown -fold %q, want slice, hash, ptr or both", name)
+}
+
 // requireTrailingNewline turns the one input shape this reader cannot fold into a named error instead of a confusing row error at the last byte.
 func requireTrailingNewline(f *os.File, size int64) error {
 	var last [1]byte
@@ -254,7 +287,7 @@ func requireTrailingNewline(f *os.File, size int64) error {
 // foldRange reads [lo,hi) in buffer-sized chunks, carrying the partial row at the end of each chunk into the front of the next, and folds the row that straddles hi by reading up to maxRow bytes past it.
 //
 // A range that does not start at 0 starts reading ONE BYTE EARLY. That byte is what distinguishes "lo is in the middle of a row, skip to the next boundary" from "lo IS a boundary, keep the row that starts there"; without it the second case silently drops one row per aligned boundary, which is one row in every fourteen boundaries on the official key set.
-func foldRange(f *os.File, t *table, lo, hi, size int64, buf []byte, k kernel, pk parseKind) error {
+func foldRange(f *os.File, t *table, lo, hi, size int64, buf []byte, k kernel, pk parseKind, fk foldKind) error {
 	readEnd := min(hi+maxRow, size)
 	readStart := lo
 	if lo > 0 {
@@ -299,14 +332,14 @@ func foldRange(f *os.File, t *table, lo, hi, size int64, buf []byte, k kernel, p
 		if base+int64(avail) >= hi {
 			// The straddling row may still be incomplete when the buffer is no bigger than the range; in that case fall through, fold the whole rows, and read the rest of it next time round.
 			if end, ok := rangeEnd(buf[:avail], base, hi, from); ok {
-				return foldTimed(t, buf[from:end], k, pk, base+int64(from))
+				return foldTimed(t, buf[from:end], k, pk, fk, base+int64(from))
 			}
 		}
 		nl := bytes.LastIndexByte(buf[:avail], '\n')
 		if nl < from {
 			return fmt.Errorf("byte %d: row longer than the %d-byte buffer", base, len(buf))
 		}
-		if err := foldTimed(t, buf[from:nl+1], k, pk, base+int64(from)); err != nil {
+		if err := foldTimed(t, buf[from:nl+1], k, pk, fk, base+int64(from)); err != nil {
 			return err
 		}
 		carry = copy(buf, buf[nl+1:avail])
@@ -315,18 +348,18 @@ func foldRange(f *os.File, t *table, lo, hi, size int64, buf []byte, k kernel, p
 }
 
 // foldTimed is t.fold with the -phases clock around it, so read and fold are measured at the same two call sites that alternate in the loop.
-func foldTimed(t *table, chunk []byte, k kernel, pk parseKind, base int64) error {
+func foldTimed(t *table, chunk []byte, k kernel, pk parseKind, fk foldKind, base int64) error {
 	if !phasesOn {
-		return t.fold(chunk, k, pk, base)
+		return t.fold(chunk, k, pk, fk, base)
 	}
 	t0 := time.Now()
-	err := t.fold(chunk, k, pk, base)
+	err := t.fold(chunk, k, pk, fk, base)
 	phaseFold.Add(int64(time.Since(t0)))
 	return err
 }
 
 // foldMapped is foldRange over a mapping: the same ownership rule, no copy, no buffer, and the same one-byte lookback so that a range starting exactly on a row boundary keeps that row.
-func foldMapped(t *table, data []byte, lo, hi int64, k kernel, pk parseKind) error {
+func foldMapped(t *table, data []byte, lo, hi int64, k kernel, pk parseKind, fk foldKind) error {
 	from := 0
 	if lo > 0 {
 		back := lo - 1
@@ -343,7 +376,7 @@ func foldMapped(t *table, data []byte, lo, hi int64, k kernel, pk parseKind) err
 	if !ok {
 		return fmt.Errorf("byte %d: no row boundary at or after the end of the range", hi)
 	}
-	return t.fold(data[from:end], k, pk, int64(from))
+	return t.fold(data[from:end], k, pk, fk, int64(from))
 }
 
 // rangeEnd returns the index just past the last row this range owns: the first '\n' at or after hi-1, because a row ending exactly at hi-1 is the last one that STARTS before hi.
