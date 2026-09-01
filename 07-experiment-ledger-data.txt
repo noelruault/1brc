@@ -1,0 +1,136 @@
+# 07-experiment-ledger — raw data
+
+Machine: Apple M5 Pro, hw.ncpu 15, 24 GB RAM, macOS Darwin 25.5.0, arm64. go1.27.0 darwin/arm64. hyperfine 1.20.0.
+PROVISIONAL: every run below was on BATTERY (spec.md:42). The headline itself is the committed bench file, not these.
+Binary: 1brc/code/go at commit 39990ad, built by each script before it measured.
+Files: measurements-100m.txt (1.4 GB) and measurements-1b.txt (13.8 GB); command, rows, bytes and sha256 for both are in 02-baseline-data.txt.
+
+Deltas are only ever taken WITHIN one hyperfine invocation. The three invocations below are separated by their own headings and the 1b default arm appears in two of them, 1.667 s and 1.717 s, which is the cross-invocation drift this rule exists for.
+
+==============================================================================
+== INVOCATION A: every arm on the 100m file ==================================
+==============================================================================
+power:  -InternalBattery-0 (id=23396451)	51%; discharging; 8:12 remaining present: true
+load: 17:25  up 1 day,  7:44, 18 users, load averages: 2.48 2.41 2.04
+commit: f786d4e
+Benchmark 1: default static/combined/pread/branchless buf4M bits17
+  Time (mean ± σ):     152.9 ms ±   1.9 ms    [User: 1783.2 ms, System: 201.0 ms]
+  Range (min … max):   150.9 ms … 155.5 ms    5 runs
+ 
+Benchmark 2: H1 cursor seg2M
+  Time (mean ± σ):     153.6 ms ±   0.8 ms    [User: 1785.8 ms, System: 178.7 ms]
+  Range (min … max):   152.3 ms … 154.3 ms    5 runs
+ 
+Benchmark 3: H5 table split
+  Time (mean ± σ):     155.1 ms ±   2.1 ms    [User: 1826.9 ms, System: 197.7 ms]
+  Range (min … max):   153.4 ms … 158.6 ms    5 runs
+ 
+Benchmark 4: H7 mmap
+  Time (mean ± σ):     151.2 ms ±   2.0 ms    [User: 1777.6 ms, System: 121.6 ms]
+  Range (min … max):   148.1 ms … 153.2 ms    5 runs
+ 
+Benchmark 5: H7 mmap+madvise
+  Time (mean ± σ):     180.8 ms ±   6.8 ms    [User: 1769.5 ms, System: 67.0 ms]
+  Range (min … max):   173.2 ms … 188.9 ms    5 runs
+ 
+Benchmark 6: H3 parse scalar
+  Time (mean ± σ):     146.4 ms ±   2.6 ms    [User: 1717.3 ms, System: 147.2 ms]
+  Range (min … max):   143.5 ms … 149.7 ms    5 runs
+ 
+Benchmark 7: buf 1M
+  Time (mean ± σ):     143.5 ms ±   2.7 ms    [User: 1752.8 ms, System: 126.7 ms]
+  Range (min … max):   139.8 ms … 147.1 ms    5 runs
+ 
+Benchmark 8: page cache (nocache=false)
+  Time (mean ± σ):     147.6 ms ±   2.6 ms    [User: 1765.2 ms, System: 143.6 ms]
+  Range (min … max):   144.7 ms … 150.0 ms    5 runs
+ 
+Benchmark 9: bits 14
+  Time (mean ± σ):     142.1 ms ±   3.0 ms    [User: 1755.6 ms, System: 131.9 ms]
+  Range (min … max):   138.3 ms … 145.9 ms    5 runs
+ 
+Summary
+  bits 14 ran
+    1.01 ± 0.03 times faster than buf 1M
+    1.03 ± 0.03 times faster than H3 parse scalar
+    1.04 ± 0.03 times faster than page cache (nocache=false)
+    1.06 ± 0.03 times faster than H7 mmap
+    1.08 ± 0.03 times faster than default static/combined/pread/branchless buf4M bits17
+    1.08 ± 0.02 times faster than H1 cursor seg2M
+    1.09 ± 0.03 times faster than H5 table split
+    1.27 ± 0.05 times faster than H7 mmap+madvise
+
+==============================================================================
+== INVOCATION B: the same arms on the 1b file ================================
+==============================================================================
+power:  -InternalBattery-0 (id=23396451)	51%; discharging; 8:02 remaining present: true
+load: 17:26  up 1 day,  7:45, 18 users, load averages: 2.58 2.63 2.17
+commit: 39990ad
+Benchmark 1: default static/combined/pread-nocache/branchless buf4M bits17
+  Time (mean ± σ):      1.667 s ±  0.017 s    [User: 18.701 s, System: 2.246 s]
+  Range (min … max):    1.643 s …  1.685 s    5 runs
+ 
+Benchmark 2: H1 cursor seg2M
+  Time (mean ± σ):      2.017 s ±  0.030 s    [User: 18.979 s, System: 2.492 s]
+  Range (min … max):    1.976 s …  2.058 s    5 runs
+ 
+Benchmark 3: H5 table split
+  Time (mean ± σ):      1.743 s ±  0.021 s    [User: 20.105 s, System: 2.290 s]
+  Range (min … max):    1.726 s …  1.769 s    5 runs
+ 
+Benchmark 4: H3 parse scalar
+  Time (mean ± σ):      1.857 s ±  0.193 s    [User: 19.979 s, System: 2.372 s]
+  Range (min … max):    1.760 s …  2.202 s    5 runs
+ 
+  Warning: Statistical outliers were detected. Consider re-running this benchmark on a quiet system without any interferences from other programs. It might help to use the '--warmup' or '--prepare' options.
+ 
+Benchmark 5: buf 1M
+  Time (mean ± σ):      1.713 s ±  0.008 s    [User: 20.585 s, System: 1.718 s]
+  Range (min … max):    1.700 s …  1.720 s    5 runs
+ 
+Benchmark 6: bits 14
+  Time (mean ± σ):      1.787 s ±  0.017 s    [User: 20.705 s, System: 2.331 s]
+  Range (min … max):    1.765 s …  1.812 s    5 runs
+ 
+Benchmark 7: page cache (nocache=false)
+  Time (mean ± σ):      1.759 s ±  0.025 s    [User: 21.419 s, System: 2.334 s]
+  Range (min … max):    1.720 s …  1.787 s    5 runs
+ 
+Summary
+  default static/combined/pread-nocache/branchless buf4M bits17 ran
+    1.03 ± 0.01 times faster than buf 1M
+    1.05 ± 0.02 times faster than H5 table split
+    1.06 ± 0.02 times faster than page cache (nocache=false)
+    1.07 ± 0.02 times faster than bits 14
+    1.11 ± 0.12 times faster than H3 parse scalar
+    1.21 ± 0.02 times faster than H1 cursor seg2M
+
+==============================================================================
+== INVOCATION C: H7's mmap arms at 1b, with a default anchor ==================
+==============================================================================
+power:  -InternalBattery-0 (id=23396451)	48%; discharging; 7:32 remaining present: true
+load: 17:28  up 1 day,  7:47, 18 users, load averages: 9.40 5.17 3.21
+commit: 39990ad
+Benchmark 1: anchor: default (pread, F_NOCACHE)
+  Time (mean ± σ):      1.717 s ±  0.038 s    [User: 19.011 s, System: 2.311 s]
+  Range (min … max):    1.687 s …  1.759 s    3 runs
+ 
+Benchmark 2: H7 mmap
+  Time (mean ± σ):      9.693 s ±  0.116 s    [User: 20.732 s, System: 18.391 s]
+  Range (min … max):    9.619 s …  9.827 s    3 runs
+ 
+  Warning: The first benchmarking run for this command was significantly slower than the rest (9.827 s). This could be caused by (filesystem) caches that were not filled until after the first run. You are already using the '--warmup' option which helps to fill these caches before the actual benchmark. You can either try to increase the warmup count further or re-run this benchmark on a quiet system in case it was a random outlier. Alternatively, consider using the '--prepare' option to clear the caches before each timing run.
+ 
+Benchmark 3: H7 mmap+madvise(WILLNEED)
+  Time (mean ± σ):     10.782 s ±  0.100 s    [User: 18.943 s, System: 11.206 s]
+  Range (min … max):   10.702 s … 10.893 s    3 runs
+ 
+Summary
+  anchor: default (pread, F_NOCACHE) ran
+    5.65 ± 0.14 times faster than H7 mmap
+    6.28 ± 0.15 times faster than H7 mmap+madvise(WILLNEED)
+
+==============================================================================
+== The committed bench record (the headline's source) =========================
+==============================================================================
+file: 1brc/bench/2026-09-01T152951Z-v1-parallel.txt
