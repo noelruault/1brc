@@ -174,6 +174,46 @@ func TestARangeShorterThanARowOwnsNothing(t *testing.T) {
 	}
 }
 
+// TestTheReadersAgreeOnOverlongRows is the sibling-agreement test for the staged reader, on the one input class no generated corpus contains: a row longer than maxRow.
+// It caught a real divergence. With a maxRow-sized prefix the staged reader rejected a 306-byte row only when the chunk boundary happened to leave more than maxRow of it trailing, so the SAME file passed at one worker count and failed at another while `-fill off` accepted it throughout.
+// The buffer sizes bracket the row on both sides deliberately: every reader must accept a row that fits its buffer and reject one that does not, and they must do it at the same place.
+func TestTheReadersAgreeOnOverlongRows(t *testing.T) {
+	for _, bufKiB := range []int{1, 2, 7} {
+		chunk := bufKiB * 1024
+		// The last two are the split itself: the row is `;1.0\n` longer than the name, so these are a row of exactly chunk bytes, which every reader must accept, and one of chunk+1, which every reader must reject. A comfortable value past the split leaves the bound unpinned.
+		for _, nameLen := range []int{maxRow - 20, maxRow, maxRow + 1, 300, 2000, chunk - 5, chunk - 4} {
+			body := "Hamburg;12.0\n" + strings.Repeat("x", nameLen) + ";1.0\n" + "Hamburg;13.0\n"
+			path := writeFile(t, body)
+			// Worker counts move the range boundaries, which is what moved the chunk boundary inside the long row.
+			for _, workers := range []int{1, 2, 3, 7} {
+				var want string
+				var wantErr bool
+				for _, fill := range []string{"off", "sync", "ahead"} {
+					cfg := defaults()
+					cfg.Workers, cfg.BufKiB, cfg.SegKiB, cfg.Fill = workers, bufKiB, bufKiB, fill
+					var got bytes.Buffer
+					err := run(path, cfg, &got)
+					name := fmt.Sprintf("name=%d/buf=%dKiB/workers=%d/fill=%s", nameLen, bufKiB, workers, fill)
+					if fill == "off" {
+						want, wantErr = got.String(), err != nil
+						// Agreement alone would pass if all three readers wrongly accepted the over-long row, so the bound itself is asserted at one worker, where the range is the whole file and the window starts on a row boundary.
+						if workers == 1 && nameLen >= chunk-5 && wantErr != (nameLen > chunk-5) {
+							t.Fatalf("row of %d bytes against a %d-byte buffer: -fill off gave err!=nil=%v", nameLen+5, chunk, wantErr)
+						}
+						continue
+					}
+					if (err != nil) != wantErr {
+						t.Fatalf("%s: err=%v, but -fill off gave err!=nil=%v", name, err, wantErr)
+					}
+					if !wantErr && got.String() != want {
+						t.Fatalf("%s: output differs from -fill off", name)
+					}
+				}
+			}
+		}
+	}
+}
+
 // TestFoldRejectsWhatTheReferenceRejects guards the divergence that byte-comparing clean data cannot catch: a fast implementation that silently accepts a malformed or out-of-range line would pass the 10m gate and be wrong on any file that has one.
 //
 // Each case runs TWICE: alone, where the row is inside the scalar tail, and followed by enough valid rows to push it into the branchless fast path. A check that only exists on one of the two paths is the bug this catches.

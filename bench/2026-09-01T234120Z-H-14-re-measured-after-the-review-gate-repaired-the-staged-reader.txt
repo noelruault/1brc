@@ -1,0 +1,54 @@
+# experiment 2026-09-01T234120Z
+hypothesis: H-14 re-measured after the review gate repaired the staged reader
+prediction: the repair is confined to the range-ownership arithmetic (a chunk-sized carry prefix, the previous buffer released after its carry is copied out, one IndexByte per chunk policing over-long rows), so E-29 stands: -fill ahead lands within 2% of the incumbent and does not separate from it. A reversal here would mean E-29 measured the bug and not the mechanism
+file:     measurements-1b.txt   runs: 5   warmup: 1   cooldown: 20s
+commit:   17b7c3107adc88f3601f5d2c46904bfbe867f821 (DIRTY WORKING TREE)
+go:       go version go1.27.0 darwin/arm64
+machine:  Apple M5 Pro, hw.ncpu 15, 24 GiB, 26.5.2 arm64
+hyperfine: hyperfine 1.20.0
+power:    'AC Power' 	100%; charged; 0:00 remaining present: true
+load:      1:41  up 1 day, 16 hrs, 19 users, load averages: 2.26 2.08 2.01
+
+$ incumbent-a: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+$ sync: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -fill sync > /dev/null
+$ ahead: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -fill ahead > /dev/null
+$ incumbent-b: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+
+Benchmark 1: incumbent-a
+  Time (mean ± σ):      1.215 s ±  0.008 s    [User: 14.675 s, System: 1.457 s]
+  Range (min … max):    1.206 s …  1.228 s    5 runs
+ 
+Benchmark 2: sync
+  Time (mean ± σ):      1.235 s ±  0.013 s    [User: 14.739 s, System: 1.559 s]
+  Range (min … max):    1.222 s …  1.255 s    5 runs
+ 
+Benchmark 3: ahead
+  Time (mean ± σ):      1.225 s ±  0.009 s    [User: 14.733 s, System: 1.538 s]
+  Range (min … max):    1.215 s …  1.237 s    5 runs
+ 
+Benchmark 4: incumbent-b
+  Time (mean ± σ):      1.226 s ±  0.009 s    [User: 14.720 s, System: 1.512 s]
+  Range (min … max):    1.212 s …  1.237 s    5 runs
+ 
+Summary
+  incumbent-a ran
+    1.01 ± 0.01 times faster than ahead
+    1.01 ± 0.01 times faster than incumbent-b
+    1.02 ± 0.01 times faster than sync
+
+== ledger row skeleton, paste into 07-experiment-ledger.md and write the verdict ==
+
+### E-NN — H-14 re-measured after the review gate repaired the staged reader
+
+- **Idea:** 
+- **Prediction:** the repair is confined to the range-ownership arithmetic (a chunk-sized carry prefix, the previous buffer released after its carry is copied out, one IndexByte per chunk policing over-long rows), so E-29 stands: -fill ahead lands within 2% of the incumbent and does not separate from it. A reversal here would mean E-29 measured the bug and not the mechanism
+- **Measured, invocation 2026-09-01T234120Z (1b, 5 runs, one hyperfine invocation):**
+
+  | Command | Mean [s] | Min [s] | Max [s] | Relative |
+  |:---|---:|---:|---:|---:|
+  | `incumbent-a` | 1.215 ± 0.008 | 1.206 | 1.228 | 1.00 |
+  | `sync` | 1.235 ± 0.013 | 1.222 | 1.255 | 1.02 ± 0.01 |
+  | `ahead` | 1.225 ± 0.009 | 1.215 | 1.237 | 1.01 ± 0.01 |
+  | `incumbent-b` | 1.226 ± 0.009 | 1.212 | 1.237 | 1.01 ± 0.01 |
+
+- **Verdict:** 

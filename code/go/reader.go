@@ -207,7 +207,7 @@ func aggregateFile(path string, cfg config) (map[string]*gen.Accumulator, error)
 					buf = make([]byte, chunk)
 				} else {
 					// Both staged arms get TWO buffers so the pair differs by the goroutine alone; a one-buffer sync arm would also halve the working set and the overlap could not be read off the delta.
-					bufs = [][]byte{make([]byte, maxRow+chunk), make([]byte, maxRow+chunk)}
+					bufs = [][]byte{make([]byte, 2*chunk), make([]byte, 2*chunk)}
 				}
 			}
 			for {
@@ -400,7 +400,8 @@ type chunkFill struct {
 	err error
 }
 
-// foldRangeFill is foldRange with the read decoupled from the fold: reads are a FIXED chunk at a fixed offset into a buffer that reserves maxRow bytes at the front for the partial row, rather than reads shrunk by the carry into the front of one buffer.
+// foldRangeFill is foldRange with the read decoupled from the fold: reads are a FIXED chunk at a fixed offset into a buffer that reserves a whole chunk at the front for the partial row, rather than reads shrunk by the carry into the front of one buffer.
+// The prefix is a whole chunk and not maxRow because a maxRow prefix made the two readers disagree ALIGNMENT-DEPENDENTLY on rows between maxRow and the buffer size: whether the carry exceeds maxRow depends on where the chunk boundary fell, so the same file was accepted or rejected according to -workers.
 // ahead runs them in their own goroutine so chunk N+1 is in flight while chunk N folds (H-14); with ahead false the identical loop reads inline, and that pair is what isolates the overlap from the read-shape rewrite it needed.
 // Ownership is foldRange's rule byte for byte: the one-byte lookback, the skip to the first boundary, the row that straddles hi read up to maxRow past it.
 func foldRangeFill(f *os.File, t *table, lo, hi, size int64, bufs [][]byte, chunk int, ahead bool, k kernel, pk parseKind, fk foldKind) error {
@@ -430,7 +431,7 @@ func foldRangeFill(f *os.File, t *table, lo, hi, size int64, bufs [][]byte, chun
 		if phasesOn {
 			t0 = time.Now()
 		}
-		n, err := f.ReadAt(bufs[i][maxRow:maxRow+want], off)
+		n, err := f.ReadAt(bufs[i][chunk:int64(chunk)+want], off)
 		if phasesOn {
 			phaseRead.Add(int64(time.Since(t0)))
 			phaseChunks.Add(1)
@@ -479,8 +480,9 @@ func foldRangeFill(f *os.File, t *table, lo, hi, size int64, bufs [][]byte, chun
 		}
 	}
 
-	carry := make([]byte, maxRow)
-	carryLen, first := 0, true
+	// pending is the trailing partial row, still living in the PREVIOUS buffer: it is copied into this chunk's reserved prefix before that buffer goes back to the reader, which is the ordering the whole double-buffer rests on.
+	var pending []byte
+	prev, first := -1, true
 	for {
 		cf, ok := next()
 		if !ok {
@@ -493,8 +495,13 @@ func foldRangeFill(f *os.File, t *table, lo, hi, size int64, bufs [][]byte, chun
 			break
 		}
 		b := bufs[cf.idx]
-		start := maxRow - carryLen
-		copy(b[start:maxRow], carry[:carryLen])
+		carryLen := len(pending)
+		start := chunk - carryLen
+		copy(b[start:chunk], pending)
+		if prev >= 0 {
+			free <- prev
+		}
+		prev = cf.idx
 		avail := carryLen + cf.n
 		data := b[start : start+avail]
 		base := cf.off - int64(carryLen)
@@ -508,6 +515,11 @@ func foldRangeFill(f *os.File, t *table, lo, hi, size int64, bufs [][]byte, chun
 			from = nl + 1
 			if base+int64(from) >= hi {
 				return nil
+			}
+		} else if carryLen > 0 {
+			// This window spans carryLen+chunk bytes from a row boundary, so without this the reader would accept a row up to that long, ALIGNMENT-DEPENDENTLY, where foldRange rejects anything past one chunk.
+			if nl := bytes.IndexByte(data, '\n'); nl < 0 || nl >= chunk {
+				return fmt.Errorf("byte %d: row longer than the %d-byte buffer", base, chunk)
 			}
 		}
 		first = false
@@ -524,13 +536,7 @@ func foldRangeFill(f *os.File, t *table, lo, hi, size int64, bufs [][]byte, chun
 		if err := foldTimed(t, data[from:nl+1], k, pk, fk, base+int64(from)); err != nil {
 			return err
 		}
-		carryLen = avail - (nl + 1)
-		// The reserved prefix is one maxRow, so a carry past it is a row this reader cannot fold rather than a buffer to grow; foldRange reaches the same input through its own row-longer-than-the-buffer error.
-		if carryLen > maxRow {
-			return fmt.Errorf("byte %d: row longer than %d bytes", base+int64(nl+1), maxRow)
-		}
-		copy(carry, data[nl+1:avail])
-		free <- cf.idx
+		pending = data[nl+1 : avail]
 	}
 	return fmt.Errorf("byte %d: the row crossing the end of the range is longer than %d bytes", hi, maxRow)
 }
