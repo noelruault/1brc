@@ -19,7 +19,7 @@ type entry struct {
 // qentry is H-13's quotiented bucket, 32 bytes against entry's 48: the name's first 8 bytes sit inline instead of a 24-byte slice header, so a probe reads a third fewer bytes and the common compare is one word rather than a call into memequal.
 //
 // nlen holds len(name)+1 so that a zeroed bucket means EMPTY and a legal empty name still occupies one; word alone cannot say it, because a name of three bytes and the same name padded with NULs mask to the same word.
-// ord indexes t.keys and is only read for names longer than 8 bytes, which is where word stops being the whole key: 34.1% of the 413 official rows (141 of 413 names exceed 8 bytes).
+// ord indexes t.keys and is only read for names longer than 8 bytes, which is where word stops being the whole key: 141 of the 413 official names, and so 34.1% of rows, because gen.Write picks its station uniformly.
 // min and max are int16 because that is what buys the 32 bytes; inRange bounds every value before it reaches here and the const below fails to compile if that range ever outgrows the field.
 type qentry struct {
 	word     uint64

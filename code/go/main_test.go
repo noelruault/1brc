@@ -679,3 +679,17 @@ func TestQuotSeparatesNamesOneWordCannotTell(t *testing.T) {
 		}
 	}
 }
+
+// TestUnknownTableLayoutIsRejected pins the guard that keeps a mistyped arm from being measured: before it, any string but "split" ran the incumbent, so `-table quto` would have published the incumbent's wall clock under the arm's name.
+func TestUnknownTableLayoutIsRejected(t *testing.T) {
+	path := writeFile(t, "a;1.0\n")
+	for _, layout := range []string{"quto", "Quot", "", "combined "} {
+		c := defaults()
+		c.Table = layout
+		if _, err := aggregateFile(path, c); err == nil {
+			t.Fatalf("-table %q was accepted", layout)
+		} else if !strings.Contains(err.Error(), "unknown -table") {
+			t.Fatalf("-table %q: wrong error: %v", layout, err)
+		}
+	}
+}
