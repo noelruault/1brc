@@ -75,3 +75,17 @@ The baseline every entry below was measured against, so a future reader can see 
 **Cost to revive.** High, several days: a Metal compute kernel in MSL, a cgo bridge, a reduction across 16 GPU cores, and the correctness gate re-derived on the new path. This is a fork of the study, not a round of it.
 
 **Where.** Nothing built. The argument is `06-cross-disciplinary-transfer.md` C6; the floor it is measured against is `02-baseline.md` / `02-baseline-data.txt`; the GPU core count is `06-cross-disciplinary-transfer-data.txt` §1.
+
+## P-05 — H-11, the core-class-weighted split · `subsumed`
+
+**What it is.** Split the file by byte range in proportion to core throughput rather than equally: 5 "Super" cores with 16 MiB of L2 and 10 "Performance" cores with 8 MiB (`06-cross-disciplinary-transfer-data.txt` §1) get shares weighted by a measured ratio `r`, instead of `reader.go` handing every worker the same number of bytes. Borrowed from morsel-driven parallelism, minus the dynamic dispatch E-02 already killed here.
+
+**Why subsumed — and the number, with the baseline it was measured against.** The mechanism is finish-time imbalance: an equal split makes the fast cores idle while the slow ones finish, and weighting reclaims that tail. E-20 measured the tail directly with `-phases` on the current default (20 workers, 4 MiB buffers, `F_NOCACHE`, static split, 1b rows, AC power, load 4.20): **worker wall spread is 1.029-1.038 max/min over three runs**, so there are at most **3.8%** of imbalance to collect, against a prediction of 3.3% to 16.7% as a function of `r`. E-17's oversubscription to `NumCPU()*4/3` = 20 workers is what collects it: with more goroutines than cores the scheduler refills a core that finishes early, which is the same balancing a weighted split would buy by arithmetic. The prediction was not wrong about the mechanism, it was written against a shape the binary no longer has.
+
+**Depends on.** The default staying oversubscribed. The 3.8% ceiling is a property of 20 workers on 15 cores, not of the split; at one worker per core the imbalance E-20 cannot see would be back, and `r` would matter again.
+
+**Revive when.** The default returns to one worker per core (E-17's plateau is re-measured and lost, or a future arm pins workers to cores for cache-locality reasons), OR a `-phases` run on some future configuration shows worker wall spread above ~1.15. Either restores the tail the weighting exists to take.
+
+**Cost to revive.** Low, under an hour: `r` on a resident buffer, then a weighted `staticRanges` behind a flag. The arithmetic is already written in the ledger's item 11, and the boundary-trap tests the range splitter already carries (`TestARangeShorterThanARowOwnsNothing` and its siblings) cover a weighted split unchanged, because they sweep worker counts rather than assuming equal shares.
+
+**Where.** Nothing built. The hypothesis is `06-cross-disciplinary-transfer.md` H-11 and the ledger's queue item 11; the measurement that subsumed it is E-20 / [`bench/2026-09-01T192513Z-queue-item-3-where-the-idle-cores-go.txt`](bench/2026-09-01T192513Z-queue-item-3-where-the-idle-cores-go.txt); the claim it finally tested is `02-baseline.md:15`'s "a uniform 15-way split is close to optimal on this chip", which is now measured and true at 20 workers.
