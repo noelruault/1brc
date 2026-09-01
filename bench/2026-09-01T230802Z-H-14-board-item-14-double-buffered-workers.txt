@@ -1,0 +1,82 @@
+# experiment 2026-09-01T230802Z
+hypothesis: H-14 / board item 14 — double-buffered workers
+prediction: the fill-ahead goroutine hides the read behind the fold: -11% to -20.4% of wall against the incumbent 1.233 s, landing 0.98-1.10 s, with user CPU flat to +3% because the mechanism buys parallel efficiency (79.6% toward ~95%) and removes no compute; the buffer is re-swept rather than inherited because E-24 measured 1 MiB on the unstaged syscall shape
+file:     measurements-1b.txt   runs: 5   warmup: 1   cooldown: 20s
+commit:   92669cb3a0775d74c98f9ad75497b1a5d573ba21
+go:       go version go1.27.0 darwin/arm64
+machine:  Apple M5 Pro, hw.ncpu 15, 24 GiB, 26.5.2 arm64
+hyperfine: hyperfine 1.20.0
+power:    'AC Power' 	100%; charged; 0:00 remaining present: true
+load:      1:08  up 1 day, 15:27, 19 users, load averages: 1.95 1.67 1.95
+
+$ incumbent-a: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+$ sync: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -fill sync > /dev/null
+$ ahead: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -fill ahead > /dev/null
+$ ahead-buf512: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -fill ahead -buf 512 > /dev/null
+$ ahead-buf2048: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -fill ahead -buf 2048 > /dev/null
+$ ahead-buf4096: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -fill ahead -buf 4096 > /dev/null
+$ ahead-w15: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -fill ahead -workers 15 > /dev/null
+$ incumbent-b: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+
+Benchmark 1: incumbent-a
+  Time (mean ± σ):      1.225 s ±  0.008 s    [User: 14.664 s, System: 1.509 s]
+  Range (min … max):    1.217 s …  1.234 s    5 runs
+ 
+Benchmark 2: sync
+  Time (mean ± σ):      1.229 s ±  0.006 s    [User: 14.663 s, System: 1.629 s]
+  Range (min … max):    1.224 s …  1.239 s    5 runs
+ 
+Benchmark 3: ahead
+  Time (mean ± σ):      1.232 s ±  0.009 s    [User: 14.653 s, System: 1.596 s]
+  Range (min … max):    1.222 s …  1.244 s    5 runs
+ 
+Benchmark 4: ahead-buf512
+  Time (mean ± σ):      1.303 s ±  0.006 s    [User: 15.141 s, System: 1.801 s]
+  Range (min … max):    1.296 s …  1.312 s    5 runs
+ 
+Benchmark 5: ahead-buf2048
+  Time (mean ± σ):      1.246 s ±  0.050 s    [User: 14.578 s, System: 1.668 s]
+  Range (min … max):    1.192 s …  1.322 s    5 runs
+ 
+Benchmark 6: ahead-buf4096
+  Time (mean ± σ):      1.313 s ±  0.021 s    [User: 14.779 s, System: 2.473 s]
+  Range (min … max):    1.287 s …  1.343 s    5 runs
+ 
+Benchmark 7: ahead-w15
+  Time (mean ± σ):      1.212 s ±  0.022 s    [User: 14.545 s, System: 1.498 s]
+  Range (min … max):    1.178 s …  1.234 s    5 runs
+ 
+Benchmark 8: incumbent-b
+  Time (mean ± σ):      1.213 s ±  0.017 s    [User: 14.647 s, System: 1.479 s]
+  Range (min … max):    1.192 s …  1.236 s    5 runs
+ 
+Summary
+  ahead-w15 ran
+    1.00 ± 0.02 times faster than incumbent-b
+    1.01 ± 0.02 times faster than incumbent-a
+    1.01 ± 0.02 times faster than sync
+    1.02 ± 0.02 times faster than ahead
+    1.03 ± 0.05 times faster than ahead-buf2048
+    1.07 ± 0.02 times faster than ahead-buf512
+    1.08 ± 0.03 times faster than ahead-buf4096
+
+== ledger row skeleton, paste into 07-experiment-ledger.md and write the verdict ==
+
+### E-NN — H-14 / board item 14 — double-buffered workers
+
+- **Idea:** 
+- **Prediction:** the fill-ahead goroutine hides the read behind the fold: -11% to -20.4% of wall against the incumbent 1.233 s, landing 0.98-1.10 s, with user CPU flat to +3% because the mechanism buys parallel efficiency (79.6% toward ~95%) and removes no compute; the buffer is re-swept rather than inherited because E-24 measured 1 MiB on the unstaged syscall shape
+- **Measured, invocation 2026-09-01T230802Z (1b, 5 runs, one hyperfine invocation):**
+
+  | Command | Mean [s] | Min [s] | Max [s] | Relative |
+  |:---|---:|---:|---:|---:|
+  | `incumbent-a` | 1.225 ± 0.008 | 1.217 | 1.234 | 1.01 ± 0.02 |
+  | `sync` | 1.229 ± 0.006 | 1.224 | 1.239 | 1.01 ± 0.02 |
+  | `ahead` | 1.232 ± 0.009 | 1.222 | 1.244 | 1.02 ± 0.02 |
+  | `ahead-buf512` | 1.303 ± 0.006 | 1.296 | 1.312 | 1.07 ± 0.02 |
+  | `ahead-buf2048` | 1.246 ± 0.050 | 1.192 | 1.322 | 1.03 ± 0.05 |
+  | `ahead-buf4096` | 1.313 ± 0.021 | 1.287 | 1.343 | 1.08 ± 0.03 |
+  | `ahead-w15` | 1.212 ± 0.022 | 1.178 | 1.234 | 1.00 |
+  | `incumbent-b` | 1.213 ± 0.017 | 1.192 | 1.236 | 1.00 ± 0.02 |
+
+- **Verdict:** 

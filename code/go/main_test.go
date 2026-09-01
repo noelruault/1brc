@@ -550,6 +550,17 @@ func TestTheDefaultFoldIsThePointerWalk(t *testing.T) {
 	}
 }
 
+// TestTheDefaultReaderIsUnstagedPinsAKill is the one shape of default-pin this file did not have: the others pin an arm that WON, this pins the incumbent an arm failed to beat.
+// E-29 measured `ahead` at +0.57%/+1.57% of wall against the two bracket slots with the ranges overlapping both, and `ahead` against `sync` — the same loop, differing by the fill goroutine alone — at +0.24%, so the overlap itself is what measured zero.
+func TestTheDefaultReaderIsUnstagedPinsAKill(t *testing.T) {
+	if defaultFill != "off" {
+		t.Fatalf("defaultFill = %q, want \"off\": E-29 measured -fill ahead at 1.232 s against 1.225 s and 1.213 s, overlapping both, and -fill sync at 1.229 s", defaultFill)
+	}
+	if flk, err := fillMode(defaultFill); err != nil || flk != fillOff {
+		t.Fatalf("fillMode(%q) = (%d, %v), want (fillOff, nil)", defaultFill, flk, err)
+	}
+}
+
 // TestTheDefaultOversubscribesTheCores pins the decision E-17 bought, not the number it landed on: reverting the default to one worker per core fails here.
 func TestTheDefaultOversubscribesTheCores(t *testing.T) {
 	cores := runtime.NumCPU()
