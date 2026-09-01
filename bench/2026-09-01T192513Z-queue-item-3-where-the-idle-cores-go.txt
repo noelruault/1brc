@@ -1,0 +1,83 @@
+# instruments 2026-09-01T192513Z
+hypothesis: queue item 3 - what the idle 25% of the cores is waiting for, and what the fold spends its CPU on
+note:     ONE binary configuration instrumented, not N arms ranked, so E-16's slot bias does not apply. Taken under the new measurement lock with the preflight green.
+commit:   ae2b753ffd019f478df948469936c1b03f23b87e
+go:       go version go1.27.0 darwin/arm64
+machine:  Apple M5 Pro, hw.ncpu 15, 24 GiB, 26.5.2 arm64
+hyperfine: hyperfine 1.20.0
+power:    'AC Power' 	100%; charged; 0:00 remaining present: true
+load:     21:25  up 1 day, 11:44, 19 users, load averages: 4.20 4.64 4.61
+
+--- phases run 1: bin/1brc -phases -in measurements-1b.txt ---
+phases: workers=20 chunks=3300 read=14.292029797s fold=22.870423667s read/(read+fold)=38.5%
+phases: worker wall min=1.832806916s p50=1.860593833s max=1.890958458s sum=37.201018085s skew(max/min)=1.032 merge=4.9715ms
+real 1.91
+user 18.83
+sys 2.51
+--- phases run 2: bin/1brc -phases -in measurements-1b.txt ---
+phases: workers=20 chunks=3300 read=8.628059567s fold=20.98963863s read/(read+fold)=29.1%
+phases: worker wall min=1.4554175s p50=1.485300792s max=1.496988791s sum=29.642373124s skew(max/min)=1.029 merge=5.132333ms
+real 1.50
+user 18.53
+sys 2.06
+--- phases run 3: bin/1brc -phases -in measurements-1b.txt ---
+phases: workers=20 chunks=3300 read=9.26439546s fold=21.505946145s read/(read+fold)=30.1%
+phases: worker wall min=1.518335292s p50=1.539224375s max=1.5754155s sum=30.811111915s skew(max/min)=1.038 merge=5.840041ms
+real 1.58
+user 18.60
+sys 2.19
+--- cpuprofile run: bin/1brc -cpuprofile /tmp/r2.pprof -in measurements-1b.txt ---
+real 1.74
+user 18.68
+sys 2.25
+--- go tool pprof -top -nodecount=14 ---
+File: 1brc
+Type: cpu
+Time: 2026-09-01 21:25:30 CEST
+Duration: 1.73s, Total samples = 14.20s (820.44%)
+Showing nodes accounting for 14.05s, 98.94% of 14.20s total
+Dropped 23 nodes (cum <= 0.07s)
+Showing top 14 nodes out of 32
+      flat  flat%   sum%        cum   cum%
+     4.68s 32.96% 32.96%      4.76s 33.52%  main.indexDelim
+     2.58s 18.17% 51.13%      2.59s 18.24%  main.validTemp
+     2.23s 15.70% 66.83%      2.23s 15.70%  syscall.rawsyscalln
+     1.19s  8.38% 75.21%      2.25s 15.85%  main.(*table).update
+     1.18s  8.31% 83.52%     11.81s 83.17%  main.(*table).foldRows
+     0.82s  5.77% 89.30%      0.82s  5.77%  runtime.memequal
+     0.58s  4.08% 93.38%      0.82s  5.77%  main.parseTempBranchless (inline)
+     0.45s  3.17% 96.55%      0.45s  3.17%  encoding/binary.littleEndian.Uint64 (inline)
+     0.24s  1.69% 98.24%      0.24s  1.69%  main.(*table).merge (inline)
+     0.09s  0.63% 98.87%      0.09s  0.63%  runtime.pthread_cond_signal
+     0.01s  0.07% 98.94%      2.24s 15.77%  os.(*File).pread
+         0     0% 98.94%      0.82s  5.77%  bytes.Equal (inline)
+         0     0% 98.94%      2.23s 15.70%  internal/poll.(*FD).Pread
+         0     0% 98.94%      2.23s 15.70%  internal/poll.(*FD).Pread.func1 (inline)
+
+Arithmetic, evaluated rather than written by hand (runs 2 and 3; run 1 is the first-touch outlier every
+set here shows, 1.91/2.18/5.06 s across the three attempts, and it is excluded and named, not dropped silently):
+
+read share of worker wall   29.1% and 30.1%
+worker wall skew max/min    1.029 (run 2), 1.029-1.038 over the three
+workers busy sum/wall       19.76 of 20
+workers blocked in read     5.75 of 20
+cores busy user/wall        12.35 and 11.77 of 15
+merge share of wall         0.34%
+
+CPU per row                 18.53 ns (user CPU is the stable number here: 18.53-18.83 s over five runs across three attempts)
+compute floor user/cores    1.235 s  <-- the finding
+so H-14 measured ceiling    17.6% of the 1.50 s wall, not the 25% derived in 06
+CPU budget for a 1.000 s wall 15.00 ns/row, i.e. cut 19.1% of CPU
+read floor from 02-baseline  0.754 s, which is BELOW the compute floor, so this binary is compute-bound at 1b
+effective read bandwidth     9.20 GB/s against the 18.3 GB/s measured in 02-baseline
+
+what the profile shares buy, derived at perfect scaling and therefore ceilings:
+  indexDelim           33.52% of CPU -> compute floor 0.821 s if it were free
+  validTemp            18.24% of CPU -> compute floor 1.010 s if it were free
+  pread syscall        15.70% of CPU -> compute floor 1.041 s if it were free
+  table.update         15.85% of CPU -> compute floor 1.040 s if it were free
+  memequal              5.77% of CPU -> compute floor 1.164 s if it were free
+  parseTempBranchless   5.77% of CPU -> compute floor 1.164 s if it were free
+  merge                 1.69% of CPU -> compute floor 1.214 s if it were free
+
+profile samples 14.20 s against 18.83 s of user CPU: 24.6% short, so the SHARES rank and the absolute seconds do not
