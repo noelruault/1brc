@@ -12,7 +12,7 @@ var oneDecimal = regexp.MustCompile(`^-?\d+\.\d$`)
 
 // Every legal temperature must print with exactly one fractional digit and never as "-0.0"; those are the two shape guarantees the output format rests on.
 func TestAppendTenthsShape(t *testing.T) {
-	for v := minTenths; v <= maxTenths; v++ {
+	for v := MinTenths; v <= MaxTenths; v++ {
 		got := string(AppendTenths(nil, v))
 		if !oneDecimal.MatchString(got) {
 			t.Fatalf("AppendTenths(%d) = %q, want -?\\d+\\.\\d", v, got)

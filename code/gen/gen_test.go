@@ -118,7 +118,7 @@ func TestWrittenRowsSatisfyTheRules(t *testing.T) {
 		if !ok {
 			t.Fatalf("line %d: %q is not a one-decimal temperature", i, line[sep+1:])
 		}
-		if v < minTenths || v > maxTenths {
+		if v < MinTenths || v > MaxTenths {
 			t.Fatalf("line %d: %d tenths is outside [-99.9, 99.9]", i, v)
 		}
 	}
@@ -138,11 +138,11 @@ func TestWriteClampsToLegalRange(t *testing.T) {
 		if !ok {
 			t.Fatalf("unparseable line %q", line)
 		}
-		if v < minTenths || v > maxTenths {
+		if v < MinTenths || v > MaxTenths {
 			t.Fatalf("clamp failed: %q is outside [-99.9, 99.9]", line)
 		}
-		sawHigh = sawHigh || v == maxTenths
-		sawLow = sawLow || v == minTenths
+		sawHigh = sawHigh || v == MaxTenths
+		sawLow = sawLow || v == MinTenths
 	}
 	if !sawHigh || !sawLow {
 		t.Errorf("clamp never engaged (high=%v low=%v); the test no longer covers it", sawHigh, sawLow)

@@ -78,10 +78,10 @@ func Write(w io.Writer, stations []Station, rows int64, stddev float64, seed uin
 	for i := int64(0); i < rows; i++ {
 		idx := r.IntN(len(stations))
 		t := RoundToTenths(r.NormFloat64()*stddev + stations[idx].Mean)
-		if t < minTenths {
-			t = minTenths
-		} else if t > maxTenths {
-			t = maxTenths
+		if t < MinTenths {
+			t = MinTenths
+		} else if t > MaxTenths {
+			t = MaxTenths
 		}
 		line = append(line[:0], names[idx]...)
 		line = AppendTenths(line, t)

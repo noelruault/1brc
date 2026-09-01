@@ -45,7 +45,7 @@ func Aggregate(r io.Reader) (map[string]*Accumulator, error) {
 		// the data (README.md:422), so it is enforced here where the line number
 		// is known, rather than silently aggregated into a result that looks
 		// plausible.
-		if t < minTenths || t > maxTenths {
+		if t < MinTenths || t > MaxTenths {
 			return nil, fmt.Errorf("line %d: %q is outside [-99.9, 99.9]", line, b[i+1:])
 		}
 		name := string(b[:i])

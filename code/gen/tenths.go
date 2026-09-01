@@ -26,8 +26,8 @@ type Tenths int64
 // Temperature bounds from README.md:422, inclusive: every legal value is a whole
 // number of tenths in [-999, 999].
 const (
-	minTenths Tenths = -999
-	maxTenths Tenths = 999
+	MinTenths Tenths = -999
+	MaxTenths Tenths = 999
 )
 
 // RoundToTenths rounds v to the nearest tenth with ties going toward positive
