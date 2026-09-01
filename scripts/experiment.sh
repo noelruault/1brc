@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# One autoresearch experiment: N arms of the same binary, correctness-gated, timed in ONE hyperfine
-# invocation, written to a dated file under 1brc/bench/ with a pre-filled ledger row.
+# One autoresearch experiment: N arms of the same binary, correctness-gated, timed in ONE hyperfine invocation, written to a dated file under 1brc/bench/ with a pre-filled ledger row.
 # The rules it refuses to let you break are in 07-experiment-ledger.md's header.
 set -euo pipefail
 
@@ -57,9 +56,9 @@ parse_args() {
 # validate enforces the four rules this study paid for; each rejection names the row that taught it.
 validate() {
   [[ -n $HYP ]] || die "no hypothesis id (-i). A run with no hypothesis has no row to fill."
-  [[ -n $PRED ]] || die "no prediction (-p). 07-method-what-worked.md: predict a number or learn nothing."
+  # One rule, not two: a separate -z check for the prediction masked this one and neither was pinned.
   if [[ $PRED != sweep:* && $PRED != *[0-9]* ]]; then
-    die "prediction has no number: '$PRED'. Use -p 'sweep: <why>' if this is genuinely a sweep (E-06)."
+    die "prediction ('$PRED') must carry a number (-p); 07-method-what-worked.md: a run that only measures produces a number nobody can interpret. A knob-turn with no mechanism is -p 'sweep: <why>' (E-06)."
   fi
   ((${#ARM_NAMES[@]} >= 2)) || die "need at least two arms (-a); one arm is a bench, use bench.sh."
   local i j
@@ -73,8 +72,7 @@ validate() {
   fi
 }
 
-# arm_command builds the timed command; the correctness check runs the same ARM_FLAGS entry, so a
-# flag can never be measured without having been checked.
+# arm_command builds the timed command; the correctness check runs the same ARM_FLAGS entry, so a flag can never be measured without having been checked.
 arm_command() { echo "$BIN -in $DATA ${ARM_FLAGS[$1]} > /dev/null"; }
 
 run() {
@@ -147,13 +145,24 @@ self_test() {
     if [[ $got -ne $want ]]; then echo "FAIL (want $want, got $got): $desc" >&2; fails=$((fails + 1));
     else echo "ok: $desc"; fi
   }
+  # expect_msg also pins WHICH rule rejected, so a sibling guard cannot stand in for the one under test.
+  expect_msg() {
+    local want="$1" substr="$2" desc="$3"; shift 3
+    local got=0 out
+    out="$( ( parse_args "$@" && validate ) 2>&1 )" || got=$?
+    if [[ $got -ne $want || $out != *"$substr"* ]]; then
+      echo "FAIL (want $want/'$substr', got $got/'$out'): $desc" >&2; fails=$((fails + 1))
+    else echo "ok: $desc"; fi
+  }
   local two=(-a 'a=-workers 15' -a 'b=-workers 20')
 
   expect 0 "a hypothesis, a numeric prediction and two arms is a valid experiment" \
     -i H-99 -p 'wins by 5%' "${two[@]}"
   expect 2 "no hypothesis id is refused" -p 'wins by 5%' "${two[@]}"
-  expect 2 "no prediction is refused" -i H-99 "${two[@]}"
-  expect 2 "a prediction with no number is refused" -i H-99 -p 'it should be faster' "${two[@]}"
+  # These two assert the MESSAGE, not only the status: a sibling -z guard here passed its own mutation while masking this rule, so status alone pinned neither.
+  expect_msg 2 'must carry a number' "no prediction is refused, by the numeric rule" -i H-99 "${two[@]}"
+  expect_msg 2 'must carry a number' "a prediction with no number is refused" \
+    -i H-99 -p 'it should be faster' "${two[@]}"
   expect 0 "a labelled sweep may carry no number" -i H-99 -p 'sweep: no mechanism, just a knob' "${two[@]}"
   expect 2 "one arm is refused: a delta needs something to be a delta from" \
     -i H-99 -p 'wins by 5%' -a 'a=-workers 15'

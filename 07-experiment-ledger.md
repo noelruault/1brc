@@ -14,10 +14,10 @@ The primary sources are this repo's own prior art, because it has run this loop 
 
 **Four things transplant, and each one is a check in the harness.**
 
-- **A fixed experiment budget** — karpathy's is five minutes of training per attempt, which buys ~12 attempts an hour. Ours is one hyperfine invocation on the 1b file: N arms at five runs plus a warmup, so an N-arm experiment costs about `(N+1) × 6 × 1.75 s` of timing plus a per-arm correctness pass. That is the same trade for the same reason, and it lands on this ledger's binding rule for free, because all the arms are in one invocation.
+- **A fixed experiment budget** — karpathy's is five minutes of training per attempt, which buys ~12 attempts an hour. Ours is one hyperfine invocation on the 1b file: N arms at five runs plus a warmup, so an N-arm experiment costs about `N × 6 × 1.75 s` of timing — 31.5 s for three arms — plus a per-arm correctness pass. That is the same trade for the same reason, and it lands on this ledger's binding rule for free, because all the arms are in one invocation.
 - **One edit surface.** karpathy's agent only edits `train.py`. Every hypothesis here has instead become a **flag on one binary** — `-split`, `-table`, `-io`, `-parse`, `-kernel` — which is `METHODOLOGY.md` §1.1's "add a pricing function; never replace the baseline" in the form this problem takes. The incumbent is arm 1 of every invocation, so `AUTORESEARCH.md`'s "reproduce the baseline before changing anything" happens inside the run rather than against a published number.
 - **A predicted number before the run.** `07-method-what-worked.md`: "An investigation that predicts 5 KB and measures 21 KB has learned something; one that only measures has produced a number nobody can interpret." `experiment.sh -p` is mandatory and must contain a digit; a knob-turn with no mechanism is allowed only as `-p 'sweep: <why>'`, which is E-06's precedent and labels the row honestly.
-- **A clean negative is a result.** `AUTORESEARCH.md`: "If it does not: add the log entry anyway with the number that killed it." Four of the eleven rows here are kills, and E-09 and E-11 are method rules extracted from kills.
+- **A clean negative is a result.** `AUTORESEARCH.md`: "If it does not: add the log entry anyway with the number that killed it." Three of the eleven rows here are `KILLED-on-numbers` and a fourth, E-03, is a `SPLIT` whose 413 half is killed; E-11 is a method rule extracted from E-10's kill, and E-09 from the seven arms that disagreed across two file sizes.
 
 **Two things deliberately do NOT transplant.**
 
@@ -146,7 +146,7 @@ Four hypotheses, each borrowed from a field that solves the same shape of proble
 
 The two lists above hold the hypotheses and their reasoning. This is their **state**, and it is what `go-opt-round-1` dispatches from; the numbering is theirs, never reassigned, because E-10 cites "queue item 2" and a renumbered queue would silently re-point it. Thirteen of the fourteen seeded items are open, which satisfies the harness ticket's floor of ten.
 
-**Runnable now** means every arm is already a flag on the shipped binary, so the experiment costs only its own timing — about `(N+1) × 6 × 1.75 s` for N arms at 1b, plus a correctness pass per arm. **Needs code** means an arm has to be built and gated first, and the ledger row cannot be opened until it is.
+**Runnable now** means every arm is already a flag on the shipped binary, so the experiment costs only its own timing — about `N × 6 × 1.75 s` for N arms at 1b, so 31.5 s for a three-arm row, plus a correctness pass per arm. **Needs code** means an arm has to be built and gated first, and the ledger row cannot be opened until it is.
 
 | # | hypothesis | state | what it takes |
 |---|---|---|---|

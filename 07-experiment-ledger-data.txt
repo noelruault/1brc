@@ -158,12 +158,12 @@ The primary sources are in-repo and were read, not summarised from memory:
   shapes-image-file-format/07-method-what-worked.md  (75 lines; the practices that caught real errors)
   quantization/00-methodology.md                    (126 lines; piece-level vs integration-level)
 
--- 2. experiment.sh --self-test, at commit 42b5b3d ----------------------------
+-- 2. experiment.sh --self-test, regenerated after the review gate's repair ----
 
 $ bash 1brc/scripts/experiment.sh --self-test
 ok: a hypothesis, a numeric prediction and two arms is a valid experiment
 ok: no hypothesis id is refused
-ok: no prediction is refused
+ok: no prediction is refused, by the numeric rule
 ok: a prediction with no number is refused
 ok: a labelled sweep may carry no number
 ok: one arm is refused: a delta needs something to be a delta from
@@ -239,3 +239,56 @@ x RAM (24 GiB): 2.22
 
 $ df -g /Users/noelruault/Downloads | tail -1
 /dev/disk3s5       926  552       329    63%   (329 GB free, so both candidate files fit)
+
+-- 6. The review gate: mutation round over every guard -------------------------
+
+Each mutant is applied to a COPY of experiment.sh under /tmp/mut/1brc/scripts (the whole scripts dir
+is copied so $REPO resolves and lib-provenance.sh still sources), then --self-test is run against it.
+"caught" means the self-test failed, which is what a mutant must do.
+
+FIRST ROUND, at commit 42b5b3d:
+caught:   drop the predicted-number rule
+caught:   accept a single arm
+caught:   allow duplicate arm names
+caught:   drop the E-09 file guard
+caught:   arm_command drops the flags
+SURVIVED: require a prediction is dropped   <-- self-test still passes with the rule removed
+
+    The survivor is docs/1brc/lessons.md's masking pattern, reproduced exactly: `[[ -n $PRED ]]` and
+    the digit rule each caught the other's mutant, because an empty prediction contains no digit
+    either. Neither was pinned. Per the recorded lesson the redundant guard was DELETED rather than
+    double-tested, and the two prediction cases now assert the failure MESSAGE, not only the status.
+
+SECOND ROUND, after the repair, widened to every guard in the script:
+caught:   the predicted-number rule
+caught:   the sweep escape hatch (inverted)
+caught:   the hypothesis-id rule
+caught:   two arms minimum
+caught:   unique arm names
+caught:   E-09 file guard
+caught:   --mechanism-only escape hatch
+caught:   arm must be name=flags
+caught:   arm must have a name
+caught:   unknown args are refused
+caught:   arm_command carries the flags
+caught:   arm_command carries the file
+
+    Twelve mutants, twelve caught, no survivors.
+
+-- 7. The queue board's two published commands, validated ----------------------
+
+Pointing ASSETS at nothing makes the run stop at the missing-file check, which is AFTER parse_args
+and validate: reaching that message proves the published command is well-formed and passes every rule.
+
+$ ASSETS=/nonexistent bash 1brc/scripts/experiment.sh -i 'queue item 6 - more workers than cores' \
+    -p 'if part of the idle 25% is read stall, oversubscription hides it: 3-8%' \
+    -a 'workers15=' -a 'workers20=-workers 20' -a 'workers30=-workers 30'
+experiment: missing /nonexistent/measurements-1b.txt (regenerate with the command in 02-baseline-data.txt)
+
+$ ASSETS=/nonexistent bash 1brc/scripts/experiment.sh -i 'queue item 7 - buffers above 4 MiB' \
+    -p 'sweep: 4 MiB beat 1 MiB by 2.8% at 1b, 8 and 16 MiB untried at that scale' \
+    -a 'buf4M=' -a 'buf8M=-buf 8192' -a 'buf16M=-buf 16384'
+experiment: missing /nonexistent/measurements-1b.txt (regenerate with the command in 02-baseline-data.txt)
+
+    Both incumbent arms carry no flags on purpose: -buf defaults to 4096 KiB and -workers to
+    runtime.NumCPU(), which is 15 on this machine, so "buf4M" and "workers15" ARE the default binary.
