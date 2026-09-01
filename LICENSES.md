@@ -22,3 +22,11 @@ Two pieces of arithmetic from them are close derivations and are flagged here in
 - **The SWAR zero-byte delimiter find** — `(x - 0x0101010101010101) & ~x & 0x8080808080808080` after XOR with a splatted needle. Present in thomaswue, royvanrijn and jerrinot (the last crediting royvanrijn in the source). This is a widely published bit trick that predates 1BRC (Mycroft's, via *Hacker's Delight*), and it is noted here because these files are where this study read it.
 
 Read but not derived from: their segment/cursor structure, hash-table sizing and probing, and jerrinot's lookup-table masking (credited in his source to abeobk). Where any of those turns into code here, this file gets a line.
+
+## Implementations read for `05-go-techniques.md`
+
+Fetched 2026-09-01; sha256 of every fetched file is in `05-go-techniques-data.txt`.
+
+- **`benhoyt/go-1brc` — MIT** (https://github.com/benhoyt/go-1brc/blob/master/LICENSE.txt), Copyright Ben Hoyt. `r9.go` and `r10.go` were read in full. Nothing is copied. Three ideas are adopted as shapes and reimplemented: a per-shard linearly-probed open-addressing table merged into a map at the end, a hash computed from the first 8 bytes of the name with a full `bytes.Equal` compare resolving collisions, and chunked reads with the trailing partial row carried into the next buffer. `r10.go`'s own header credits its SWAR-and-hash structure to a translation of `CalculateAverage_mtopolnik.java` from the Apache-2.0 upstream. If our table ends up close enough to r9/r10 to count as a derivation rather than a convergence, this line becomes a derivation entry.
+- **`shraddhaag/1brc` — NO LICENSE FILE**, so no code from it may be used at all; only the author's published write-up (https://www.bytesizego.com/blog/one-billion-row-challenge-go, by Matt Boyle for ByteSizeGo, 2024-02-19) was read, and only its narrative of what worked. Nothing from that repository is reproduced here in any form.
+- **`automataIA/1brc-rs` — MIT** (https://github.com/automataIA/1brc-rs/blob/main/LICENSE). Only `README.md` was read. What it contributes is a published architecture (positional reads over disjoint ranges, one reusable 4 MiB buffer and one local map per worker, nothing shared in the row loop) and its measured numbers on the author's machine. No Rust was read or ported.

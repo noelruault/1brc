@@ -1,0 +1,853 @@
+# 05-go-techniques — raw data
+
+Machine: Apple M5 Pro, hw.ncpu 15, 24 GB RAM, macOS Darwin 25.5.0, arm64. go1.27.0 darwin/arm64.
+PROVISIONAL: every measurement below was taken on BATTERY (spec.md:42).
+
+== Source recon: what was fetched, when, and its hash ==
+date: 2026-09-01T15:06:41Z
+6151a8b79dfc18093bcae872652433406fbf90fa7fc4084785653e88c7ef8cf5  89211 B  /tmp/1brc-README.md
+95fa4ee67ebd4c140e805acb2209e8274d1d3d94e8a1bc0b6f7e3acee63433e4  5437 B  /tmp/1brc-rs-README.md
+c064694a2cf176bb5d6778b5385ac62d114a4557097735ead61a3392efabde28  383 B  /tmp/benhoyt-README.md
+28c76f6e76dd9962b8eaf59cfb083762973b42528c2b5018c74cb1116249b585  4217 B  /tmp/r9.go
+90bc8739b18b7124472d5247c72b0d41d62a15d9cd14eca3a3dd359715cbdfe8  5974 B  /tmp/r10.go
+3124b1e17b307d5494552573e6b1fcc96e5fc42c181ea3d349e61c336f1eae4b  44971 B  /tmp/go-1brc-blog.html
+
+commands:
+  curl -sS -o /tmp/1brc-README.md      https://raw.githubusercontent.com/gunnarmorling/1brc/main/README.md
+  curl -sS -o /tmp/1brc-rs-README.md   https://raw.githubusercontent.com/automataIA/1brc-rs/main/README.md
+  curl -sS -o /tmp/benhoyt-README.md   https://raw.githubusercontent.com/benhoyt/go-1brc/master/README.md
+  curl -sS -o /tmp/r9.go               https://raw.githubusercontent.com/benhoyt/go-1brc/master/r9.go
+  curl -sS -o /tmp/r10.go              https://raw.githubusercontent.com/benhoyt/go-1brc/master/r10.go
+  curl -sSL -o /tmp/go-1brc-blog.html  https://www.bytesizego.com/blog/one-billion-row-challenge-go
+  curl -sS "https://api.github.com/search/repositories?q=1brc+language:Go&sort=stars&order=desc&per_page=8"
+
+github search result (stars, repo, description), the method by which the Go corpus was chosen rather than recalled:
+    265  shraddhaag/1brc  Solution to One Billion Rows Challenge in Golang. 
+     86  benhoyt/go-1brc  My Go solutions to the One Billion Row Challenge
+     38  dhartunian/1brcgo  None
+     19  mr-karan/1brc-go  1️⃣🐝🏎️ The One Billion Row Challenge -- A fun exploration of how quickly 1B rows from a text file can be aggregated with Golang
+      6  ivan-ostymchuk/1brc  One billion rows challenge in Golang
+      6  zzhaolei/1brc  1️⃣🐝🏎️ The One Billion Row Challenge
+      5  duanebester/1brc-go  None
+      3  elh/1brc-go  Performant Go 1BRC solution
+
+== Probe module ==
+The probes live in /tmp/gorecon, a throwaway Go module with a replace directive onto 1brc/code/gen so every probe runs over bytes the authoritative generator produced.
+Nothing in the repo re-runs them; the sources are transcribed at the end of this file, which is what makes the numbers re-derivable.
+file hashes at measurement time:
+  c666dd9295025e6780e4fb68c52aba8266a32d13b671bff393ecb19672056d98  /tmp/gorecon/go.mod
+  309d10aacb3872f09acb26d34c31ce8b002dd5669ccfd9f7bb9f510c10f217ea  /tmp/gorecon/corpus.go
+  57d6b1c23829f2d968c9aded1632d9698f7eb098a8a5a488b2250640bc12ac2b  /tmp/gorecon/probe_test.go
+  2bc530f74fe78ed83d171f28b55e4d9c85cd0cbf4af9c7b8915117e7c416aa69  /tmp/gorecon/asmadd.go
+  b3d10180595e5a80a068fac9e65e09d3975fa6165682819f9092f1991c8cd66f  /tmp/gorecon/asmadd_arm64.s
+
+== Probe 1 (H4): are 8 or 16 bytes of name enough to hash on? ==
+$ cd /tmp/gorecon && go test -run TestPrefixCollisions -v .
+    probe_test.go:54: 413-official w=8: names=413 distinct_prefixes=412 names_over_w=141 (34.1%) colliding_groups=1 colliding_names=2 worst_group=2 ("Alexandr")
+    probe_test.go:54: 413-official w=16: names=413 distinct_prefixes=413 names_over_w=4 (1.0%) colliding_groups=0 colliding_names=0 worst_group=1 ("Durban")
+    probe_test.go:54: 10k-synthetic w=8: names=10000 distinct_prefixes=10000 names_over_w=9319 (93.2%) colliding_groups=0 colliding_names=0 worst_group=1 ("fszZQPU\xe8")
+    probe_test.go:54: 10k-synthetic w=16: names=10000 distinct_prefixes=10000 names_over_w=8535 (85.3%) colliding_groups=0 colliding_names=0 worst_group=1 ("ov4JéPNREP1üό")
+--- PASS: TestPrefixCollisions (0.01s)
+PASS
+ok  	gorecon	0.255s
+
+== Probe 2: does the collector run at all in a v1-shaped loop? ==
+$ cd /tmp/gorecon && go test -run TestGCPressure -v .
+    probe_test.go:426: rows=524288 stations=413: NumGC 3 -> 3 (delta 0), TotalAlloc delta 790552 B, Mallocs delta 415
+--- PASS: TestGCPressure (0.04s)
+PASS
+ok  	gorecon	0.216s
+
+== Probe 3: which bounds checks survive in the scan loops? ==
+$ cd /tmp/gorecon && go test -c -gcflags=-d=ssa/check_bce -o /dev/null .   # lines 281/286 are swarIndexSlice, 296-311 swarIndexUnsafe, 313-329 swarIndexResliced
+./probe_test.go:33:11: Found IsSliceInBounds
+./probe_test.go:94:9: Found IsInBounds
+./probe_test.go:97:7: Found IsInBounds
+./probe_test.go:138:6: Found IsInBounds
+./probe_test.go:142:14: Found IsInBounds
+./probe_test.go:144:6: Found IsInBounds
+./probe_test.go:149:20: Found IsInBounds
+./probe_test.go:170:32: Found IsSliceInBounds
+./probe_test.go:171:17: Found IsSliceInBounds
+./probe_test.go:172:30: Found IsSliceInBounds
+./probe_test.go:191:32: Found IsSliceInBounds
+./probe_test.go:192:17: Found IsSliceInBounds
+./probe_test.go:193:30: Found IsSliceInBounds
+./probe_test.go:205:32: Found IsSliceInBounds
+./probe_test.go:206:17: Found IsSliceInBounds
+./probe_test.go:207:30: Found IsSliceInBounds
+./probe_test.go:219:32: Found IsSliceInBounds
+./probe_test.go:220:17: Found IsSliceInBounds
+./probe_test.go:221:30: Found IsSliceInBounds
+./probe_test.go:233:32: Found IsSliceInBounds
+./probe_test.go:234:30: Found IsSliceInBounds
+./probe_test.go:258:34: Found IsSliceInBounds
+./probe_test.go:259:19: Found IsSliceInBounds
+./probe_test.go:260:32: Found IsSliceInBounds
+./probe_test.go:298:49: Found IsSliceInBounds
+./probe_test.go:303:7: Found IsInBounds
+./probe_test.go:359:31: Found IsSliceInBounds
+./probe_test.go:360:27: Found IsSliceInBounds
+./probe_test.go:372:34: Found IsSliceInBounds
+./probe_test.go:373:27: Found IsSliceInBounds
+./probe_test.go:385:32: Found IsSliceInBounds
+./probe_test.go:386:27: Found IsSliceInBounds
+./probe_test.go:400:33: Found IsSliceInBounds
+./probe_test.go:404:28: Found IsSliceInBounds
+./probe_test.go:419:33: Found IsSliceInBounds
+./probe_test.go:420:18: Found IsSliceInBounds
+./probe_test.go:421:31: Found IsSliceInBounds
+./corpus.go:19:10: Found IsSliceInBounds
+./corpus.go:23:16: Found IsSliceInBounds
+./probe_test.go:298:47: Found IsInBounds
+./probe_test.go:359:27: Found IsSliceInBounds
+./probe_test.go:359:27: Found IsInBounds
+./probe_test.go:400:25: Found IsSliceInBounds
+./probe_test.go:400:25: Found IsInBounds
+
+  function line ranges in probe_test.go at measurement time: swarIndexSlice 295-308, swarIndexUnsafe 311-328, swarIndexResliced 332-347.
+  So: the indexed loop keeps three checks (298:47, 298:49, 303:7); the unsafe loop and the RESLICED loop each keep none.
+
+== Probe 4+5: table shapes and scan shapes, ONE invocation (every delta below is same-run) ==
+power:  -InternalBattery-0 (id=23396451)	54%; discharging; 8:32 remaining present: true
+load: 17:04  up 1 day,  7:23, 18 users, load averages: 1.32 1.39 1.62
+go: go version go1.27.0 darwin/arm64
+cmd: go test -run XXX -bench 'BenchmarkTable|BenchmarkSWARScan' -benchtime=50x -count=10 ./...
+goos: darwin
+goarch: arm64
+pkg: gorecon
+cpu: Apple M5 Pro
+BenchmarkTable/gomap/413-15         	      50	  10861258 ns/op	        20.72 ns/row
+BenchmarkTable/gomap/413-15         	      50	  10809452 ns/op	        20.62 ns/row
+BenchmarkTable/gomap/413-15         	      50	  10848273 ns/op	        20.69 ns/row
+BenchmarkTable/gomap/413-15         	      50	  10827474 ns/op	        20.65 ns/row
+BenchmarkTable/gomap/413-15         	      50	  11006971 ns/op	        20.99 ns/row
+BenchmarkTable/gomap/413-15         	      50	  10932854 ns/op	        20.85 ns/row
+BenchmarkTable/gomap/413-15         	      50	  10974656 ns/op	        20.93 ns/row
+BenchmarkTable/gomap/413-15         	      50	  10914533 ns/op	        20.82 ns/row
+BenchmarkTable/gomap/413-15         	      50	  10853071 ns/op	        20.70 ns/row
+BenchmarkTable/gomap/413-15         	      50	  10827152 ns/op	        20.65 ns/row
+BenchmarkTable/openaddr-fnv/413-15  	      50	  10183059 ns/op	        19.42 ns/row
+BenchmarkTable/openaddr-fnv/413-15  	      50	  10158833 ns/op	        19.38 ns/row
+BenchmarkTable/openaddr-fnv/413-15  	      50	  10179369 ns/op	        19.42 ns/row
+BenchmarkTable/openaddr-fnv/413-15  	      50	  10314842 ns/op	        19.67 ns/row
+BenchmarkTable/openaddr-fnv/413-15  	      50	  10179036 ns/op	        19.41 ns/row
+BenchmarkTable/openaddr-fnv/413-15  	      50	  10169912 ns/op	        19.40 ns/row
+BenchmarkTable/openaddr-fnv/413-15  	      50	  10168814 ns/op	        19.40 ns/row
+BenchmarkTable/openaddr-fnv/413-15  	      50	  10168707 ns/op	        19.40 ns/row
+BenchmarkTable/openaddr-fnv/413-15  	      50	  10200053 ns/op	        19.46 ns/row
+BenchmarkTable/openaddr-fnv/413-15  	      50	  10179851 ns/op	        19.42 ns/row
+BenchmarkTable/openaddr-prefix8-17b/413-15         	      50	   9216967 ns/op	        17.58 ns/row
+BenchmarkTable/openaddr-prefix8-17b/413-15         	      50	   9191089 ns/op	        17.53 ns/row
+BenchmarkTable/openaddr-prefix8-17b/413-15         	      50	   9180721 ns/op	        17.51 ns/row
+BenchmarkTable/openaddr-prefix8-17b/413-15         	      50	   9310578 ns/op	        17.76 ns/row
+BenchmarkTable/openaddr-prefix8-17b/413-15         	      50	   9173149 ns/op	        17.50 ns/row
+BenchmarkTable/openaddr-prefix8-17b/413-15         	      50	   9173384 ns/op	        17.50 ns/row
+BenchmarkTable/openaddr-prefix8-17b/413-15         	      50	   9166049 ns/op	        17.48 ns/row
+BenchmarkTable/openaddr-prefix8-17b/413-15         	      50	   9163706 ns/op	        17.48 ns/row
+BenchmarkTable/openaddr-prefix8-17b/413-15         	      50	   9190978 ns/op	        17.53 ns/row
+BenchmarkTable/openaddr-prefix8-17b/413-15         	      50	   9157268 ns/op	        17.47 ns/row
+BenchmarkTable/openaddr-prefix8/413-15             	      50	   9165653 ns/op	        17.48 ns/row
+BenchmarkTable/openaddr-prefix8/413-15             	      50	   9152537 ns/op	        17.46 ns/row
+BenchmarkTable/openaddr-prefix8/413-15             	      50	   9164200 ns/op	        17.48 ns/row
+BenchmarkTable/openaddr-prefix8/413-15             	      50	   9125518 ns/op	        17.41 ns/row
+BenchmarkTable/openaddr-prefix8/413-15             	      50	   9286492 ns/op	        17.71 ns/row
+BenchmarkTable/openaddr-prefix8/413-15             	      50	   9138362 ns/op	        17.43 ns/row
+BenchmarkTable/openaddr-prefix8/413-15             	      50	   9158174 ns/op	        17.47 ns/row
+BenchmarkTable/openaddr-prefix8/413-15             	      50	   9123698 ns/op	        17.40 ns/row
+BenchmarkTable/openaddr-prefix8/413-15             	      50	   9152193 ns/op	        17.46 ns/row
+BenchmarkTable/openaddr-prefix8/413-15             	      50	   9152535 ns/op	        17.46 ns/row
+BenchmarkTable/scan-only/413-15                    	      50	   6956845 ns/op	        13.27 ns/row
+BenchmarkTable/scan-only/413-15                    	      50	   6953468 ns/op	        13.26 ns/row
+BenchmarkTable/scan-only/413-15                    	      50	   6929628 ns/op	        13.22 ns/row
+BenchmarkTable/scan-only/413-15                    	      50	   6950222 ns/op	        13.26 ns/row
+BenchmarkTable/scan-only/413-15                    	      50	   6973903 ns/op	        13.30 ns/row
+BenchmarkTable/scan-only/413-15                    	      50	   6946803 ns/op	        13.25 ns/row
+BenchmarkTable/scan-only/413-15                    	      50	   7143358 ns/op	        13.62 ns/row
+BenchmarkTable/scan-only/413-15                    	      50	   6952683 ns/op	        13.26 ns/row
+BenchmarkTable/scan-only/413-15                    	      50	   6924765 ns/op	        13.21 ns/row
+BenchmarkTable/scan-only/413-15                    	      50	   6916382 ns/op	        13.19 ns/row
+BenchmarkTable/gomap/10k-15                        	      50	  14177155 ns/op	        27.04 ns/row
+BenchmarkTable/gomap/10k-15                        	      50	  14235757 ns/op	        27.15 ns/row
+BenchmarkTable/gomap/10k-15                        	      50	  14192337 ns/op	        27.07 ns/row
+BenchmarkTable/gomap/10k-15                        	      50	  14177068 ns/op	        27.04 ns/row
+BenchmarkTable/gomap/10k-15                        	      50	  14217873 ns/op	        27.12 ns/row
+BenchmarkTable/gomap/10k-15                        	      50	  14313691 ns/op	        27.30 ns/row
+BenchmarkTable/gomap/10k-15                        	      50	  14174998 ns/op	        27.04 ns/row
+BenchmarkTable/gomap/10k-15                        	      50	  14143997 ns/op	        26.98 ns/row
+BenchmarkTable/gomap/10k-15                        	      50	  14159432 ns/op	        27.01 ns/row
+BenchmarkTable/gomap/10k-15                        	      50	  14183538 ns/op	        27.05 ns/row
+BenchmarkTable/openaddr-fnv/10k-15                 	      50	  35991883 ns/op	        68.65 ns/row
+BenchmarkTable/openaddr-fnv/10k-15                 	      50	  35851131 ns/op	        68.38 ns/row
+BenchmarkTable/openaddr-fnv/10k-15                 	      50	  35889409 ns/op	        68.45 ns/row
+BenchmarkTable/openaddr-fnv/10k-15                 	      50	  35963607 ns/op	        68.60 ns/row
+BenchmarkTable/openaddr-fnv/10k-15                 	      50	  35865013 ns/op	        68.41 ns/row
+BenchmarkTable/openaddr-fnv/10k-15                 	      50	  35909940 ns/op	        68.49 ns/row
+BenchmarkTable/openaddr-fnv/10k-15                 	      50	  35991138 ns/op	        68.65 ns/row
+BenchmarkTable/openaddr-fnv/10k-15                 	      50	  35847590 ns/op	        68.37 ns/row
+BenchmarkTable/openaddr-fnv/10k-15                 	      50	  35926032 ns/op	        68.52 ns/row
+BenchmarkTable/openaddr-fnv/10k-15                 	      50	  36029081 ns/op	        68.72 ns/row
+BenchmarkTable/openaddr-prefix8-17b/10k-15         	      50	  14726987 ns/op	        28.09 ns/row
+BenchmarkTable/openaddr-prefix8-17b/10k-15         	      50	  14745298 ns/op	        28.12 ns/row
+BenchmarkTable/openaddr-prefix8-17b/10k-15         	      50	  14661536 ns/op	        27.96 ns/row
+BenchmarkTable/openaddr-prefix8-17b/10k-15         	      50	  14646017 ns/op	        27.94 ns/row
+BenchmarkTable/openaddr-prefix8-17b/10k-15         	      50	  14850527 ns/op	        28.33 ns/row
+BenchmarkTable/openaddr-prefix8-17b/10k-15         	      50	  14645124 ns/op	        27.93 ns/row
+BenchmarkTable/openaddr-prefix8-17b/10k-15         	      50	  14668742 ns/op	        27.98 ns/row
+BenchmarkTable/openaddr-prefix8-17b/10k-15         	      50	  14711359 ns/op	        28.06 ns/row
+BenchmarkTable/openaddr-prefix8-17b/10k-15         	      50	  14751503 ns/op	        28.14 ns/row
+BenchmarkTable/openaddr-prefix8-17b/10k-15         	      50	  14731112 ns/op	        28.10 ns/row
+BenchmarkTable/openaddr-prefix8/10k-15             	      50	  16020725 ns/op	        30.56 ns/row
+BenchmarkTable/openaddr-prefix8/10k-15             	      50	  16161606 ns/op	        30.83 ns/row
+BenchmarkTable/openaddr-prefix8/10k-15             	      50	  16037641 ns/op	        30.59 ns/row
+BenchmarkTable/openaddr-prefix8/10k-15             	      50	  16031386 ns/op	        30.58 ns/row
+BenchmarkTable/openaddr-prefix8/10k-15             	      50	  15987213 ns/op	        30.49 ns/row
+BenchmarkTable/openaddr-prefix8/10k-15             	      50	  16000132 ns/op	        30.52 ns/row
+BenchmarkTable/openaddr-prefix8/10k-15             	      50	  15991343 ns/op	        30.50 ns/row
+BenchmarkTable/openaddr-prefix8/10k-15             	      50	  16164342 ns/op	        30.83 ns/row
+BenchmarkTable/openaddr-prefix8/10k-15             	      50	  16312497 ns/op	        31.11 ns/row
+BenchmarkTable/openaddr-prefix8/10k-15             	      50	  16079864 ns/op	        30.67 ns/row
+BenchmarkTable/scan-only/10k-15                    	      50	   8442667 ns/op	        16.10 ns/row
+BenchmarkTable/scan-only/10k-15                    	      50	   8402741 ns/op	        16.03 ns/row
+BenchmarkTable/scan-only/10k-15                    	      50	   8381839 ns/op	        15.99 ns/row
+BenchmarkTable/scan-only/10k-15                    	      50	   8423848 ns/op	        16.07 ns/row
+BenchmarkTable/scan-only/10k-15                    	      50	   8408196 ns/op	        16.04 ns/row
+BenchmarkTable/scan-only/10k-15                    	      50	   8471896 ns/op	        16.16 ns/row
+BenchmarkTable/scan-only/10k-15                    	      50	   8615791 ns/op	        16.43 ns/row
+BenchmarkTable/scan-only/10k-15                    	      50	   8423939 ns/op	        16.07 ns/row
+BenchmarkTable/scan-only/10k-15                    	      50	   8389238 ns/op	        16.00 ns/row
+BenchmarkTable/scan-only/10k-15                    	      50	   8349856 ns/op	        15.93 ns/row
+BenchmarkSWARScan/slice/413-15                     	      50	   6123512 ns/op	        11.68 ns/row
+BenchmarkSWARScan/slice/413-15                     	      50	   6142142 ns/op	        11.72 ns/row
+BenchmarkSWARScan/slice/413-15                     	      50	   6097841 ns/op	        11.63 ns/row
+BenchmarkSWARScan/slice/413-15                     	      50	   6114275 ns/op	        11.66 ns/row
+BenchmarkSWARScan/slice/413-15                     	      50	   6129736 ns/op	        11.69 ns/row
+BenchmarkSWARScan/slice/413-15                     	      50	   6116614 ns/op	        11.67 ns/row
+BenchmarkSWARScan/slice/413-15                     	      50	   6109710 ns/op	        11.65 ns/row
+BenchmarkSWARScan/slice/413-15                     	      50	   6116380 ns/op	        11.67 ns/row
+BenchmarkSWARScan/slice/413-15                     	      50	   6105070 ns/op	        11.64 ns/row
+BenchmarkSWARScan/slice/413-15                     	      50	   6114598 ns/op	        11.66 ns/row
+BenchmarkSWARScan/resliced/413-15                  	      50	   5835794 ns/op	        11.13 ns/row
+BenchmarkSWARScan/resliced/413-15                  	      50	   5861192 ns/op	        11.18 ns/row
+BenchmarkSWARScan/resliced/413-15                  	      50	   5841474 ns/op	        11.14 ns/row
+BenchmarkSWARScan/resliced/413-15                  	      50	   5785739 ns/op	        11.04 ns/row
+BenchmarkSWARScan/resliced/413-15                  	      50	   5785095 ns/op	        11.03 ns/row
+BenchmarkSWARScan/resliced/413-15                  	      50	   5764742 ns/op	        11.00 ns/row
+BenchmarkSWARScan/resliced/413-15                  	      50	   5783864 ns/op	        11.03 ns/row
+BenchmarkSWARScan/resliced/413-15                  	      50	   5774215 ns/op	        11.01 ns/row
+BenchmarkSWARScan/resliced/413-15                  	      50	   5796077 ns/op	        11.06 ns/row
+BenchmarkSWARScan/resliced/413-15                  	      50	   5775394 ns/op	        11.02 ns/row
+BenchmarkSWARScan/unsafe/413-15                    	      50	   5588193 ns/op	        10.66 ns/row
+BenchmarkSWARScan/unsafe/413-15                    	      50	   5562370 ns/op	        10.61 ns/row
+BenchmarkSWARScan/unsafe/413-15                    	      50	   5571660 ns/op	        10.63 ns/row
+BenchmarkSWARScan/unsafe/413-15                    	      50	   5568792 ns/op	        10.62 ns/row
+BenchmarkSWARScan/unsafe/413-15                    	      50	   5571032 ns/op	        10.63 ns/row
+BenchmarkSWARScan/unsafe/413-15                    	      50	   5569828 ns/op	        10.62 ns/row
+BenchmarkSWARScan/unsafe/413-15                    	      50	   5556220 ns/op	        10.60 ns/row
+BenchmarkSWARScan/unsafe/413-15                    	      50	   5562509 ns/op	        10.61 ns/row
+BenchmarkSWARScan/unsafe/413-15                    	      50	   5586608 ns/op	        10.66 ns/row
+BenchmarkSWARScan/unsafe/413-15                    	      50	   5658102 ns/op	        10.79 ns/row
+BenchmarkSWARScan/slice/10k-15                     	      50	   8374742 ns/op	        15.97 ns/row
+BenchmarkSWARScan/slice/10k-15                     	      50	   8397234 ns/op	        16.02 ns/row
+BenchmarkSWARScan/slice/10k-15                     	      50	   8376952 ns/op	        15.98 ns/row
+BenchmarkSWARScan/slice/10k-15                     	      50	   8380562 ns/op	        15.98 ns/row
+BenchmarkSWARScan/slice/10k-15                     	      50	   8380608 ns/op	        15.98 ns/row
+BenchmarkSWARScan/slice/10k-15                     	      50	   8393676 ns/op	        16.01 ns/row
+BenchmarkSWARScan/slice/10k-15                     	      50	   8381033 ns/op	        15.99 ns/row
+BenchmarkSWARScan/slice/10k-15                     	      50	   8369470 ns/op	        15.96 ns/row
+BenchmarkSWARScan/slice/10k-15                     	      50	   8392046 ns/op	        16.01 ns/row
+BenchmarkSWARScan/slice/10k-15                     	      50	   8319498 ns/op	        15.87 ns/row
+BenchmarkSWARScan/resliced/10k-15                  	      50	   8440835 ns/op	        16.10 ns/row
+BenchmarkSWARScan/resliced/10k-15                  	      50	   8469727 ns/op	        16.15 ns/row
+BenchmarkSWARScan/resliced/10k-15                  	      50	   8315541 ns/op	        15.86 ns/row
+BenchmarkSWARScan/resliced/10k-15                  	      50	   8429016 ns/op	        16.08 ns/row
+BenchmarkSWARScan/resliced/10k-15                  	      50	   8375989 ns/op	        15.98 ns/row
+BenchmarkSWARScan/resliced/10k-15                  	      50	   8377687 ns/op	        15.98 ns/row
+BenchmarkSWARScan/resliced/10k-15                  	      50	   8359053 ns/op	        15.94 ns/row
+BenchmarkSWARScan/resliced/10k-15                  	      50	   8407477 ns/op	        16.04 ns/row
+BenchmarkSWARScan/resliced/10k-15                  	      50	   8360752 ns/op	        15.95 ns/row
+BenchmarkSWARScan/resliced/10k-15                  	      50	   8355969 ns/op	        15.94 ns/row
+BenchmarkSWARScan/unsafe/10k-15                    	      50	   7019371 ns/op	        13.39 ns/row
+BenchmarkSWARScan/unsafe/10k-15                    	      50	   6993682 ns/op	        13.34 ns/row
+BenchmarkSWARScan/unsafe/10k-15                    	      50	   7004366 ns/op	        13.36 ns/row
+BenchmarkSWARScan/unsafe/10k-15                    	      50	   7118892 ns/op	        13.58 ns/row
+BenchmarkSWARScan/unsafe/10k-15                    	      50	   7026786 ns/op	        13.40 ns/row
+BenchmarkSWARScan/unsafe/10k-15                    	      50	   7041763 ns/op	        13.43 ns/row
+BenchmarkSWARScan/unsafe/10k-15                    	      50	   7020734 ns/op	        13.39 ns/row
+BenchmarkSWARScan/unsafe/10k-15                    	      50	   7037439 ns/op	        13.42 ns/row
+BenchmarkSWARScan/unsafe/10k-15                    	      50	   7036894 ns/op	        13.42 ns/row
+BenchmarkSWARScan/unsafe/10k-15                    	      50	   7017626 ns/op	        13.39 ns/row
+PASS
+ok  	gorecon	90.630s
+
+== per-loop min/max/mean over the ten runs of the invocation above ==
+BenchmarkSWARScan/resliced/10k             min= 15.860 max= 16.150 mean= 16.002 n=10
+BenchmarkSWARScan/resliced/413             min= 11.000 max= 11.180 mean= 11.064 n=10
+BenchmarkSWARScan/slice/10k                min= 15.870 max= 16.020 mean= 15.977 n=10
+BenchmarkSWARScan/slice/413                min= 11.630 max= 11.720 mean= 11.667 n=10
+BenchmarkSWARScan/unsafe/10k               min= 13.340 max= 13.580 mean= 13.412 n=10
+BenchmarkSWARScan/unsafe/413               min= 10.600 max= 10.790 mean= 10.643 n=10
+BenchmarkTable/gomap/10k                   min= 26.980 max= 27.300 mean= 27.080 n=10
+BenchmarkTable/gomap/413                   min= 20.620 max= 20.990 mean= 20.762 n=10
+BenchmarkTable/openaddr-fnv/10k            min= 68.370 max= 68.720 mean= 68.524 n=10
+BenchmarkTable/openaddr-fnv/413            min= 19.380 max= 19.670 mean= 19.438 n=10
+BenchmarkTable/openaddr-prefix8-17b/10k    min= 27.930 max= 28.330 mean= 28.065 n=10
+BenchmarkTable/openaddr-prefix8-17b/413    min= 17.470 max= 17.760 mean= 17.534 n=10
+BenchmarkTable/openaddr-prefix8/10k        min= 30.490 max= 31.110 mean= 30.668 n=10
+BenchmarkTable/openaddr-prefix8/413        min= 17.400 max= 17.710 mean= 17.476 n=10
+BenchmarkTable/scan-only/10k               min= 15.930 max= 16.430 mean= 16.082 n=10
+BenchmarkTable/scan-only/413               min= 13.190 max= 13.620 mean= 13.284 n=10
+
+== Probe 6: what a non-inlinable Plan 9 assembly call costs (its own invocation; the PAIR is same-run) ==
+BenchmarkCallCost/asm-15         	508131603	         2.146 ns/op	         2.146 ns/call
+BenchmarkCallCost/asm-15         	559239586	         2.144 ns/op	         2.144 ns/call
+BenchmarkCallCost/asm-15         	560229103	         2.157 ns/op	         2.156 ns/call
+BenchmarkCallCost/asm-15         	559501420	         2.144 ns/op	         2.144 ns/call
+BenchmarkCallCost/asm-15         	559203756	         2.144 ns/op	         2.144 ns/call
+BenchmarkCallCost/asm-15         	559282270	         2.146 ns/op	         2.146 ns/call
+BenchmarkCallCost/asm-15         	549386509	         2.144 ns/op	         2.144 ns/call
+BenchmarkCallCost/asm-15         	560725939	         2.145 ns/op	         2.145 ns/call
+BenchmarkCallCost/asm-15         	560001322	         2.145 ns/op	         2.145 ns/call
+BenchmarkCallCost/asm-15         	560135832	         2.152 ns/op	         2.152 ns/call
+BenchmarkCallCost/go-inline-15   	1000000000	         0.2207 ns/op	         0.2207 ns/call
+BenchmarkCallCost/go-inline-15   	1000000000	         0.2203 ns/op	         0.2203 ns/call
+BenchmarkCallCost/go-inline-15   	1000000000	         0.2197 ns/op	         0.2197 ns/call
+BenchmarkCallCost/go-inline-15   	1000000000	         0.2180 ns/op	         0.2180 ns/call
+BenchmarkCallCost/go-inline-15   	1000000000	         0.2188 ns/op	         0.2188 ns/call
+BenchmarkCallCost/go-inline-15   	1000000000	         0.2182 ns/op	         0.2182 ns/call
+BenchmarkCallCost/go-inline-15   	1000000000	         0.2185 ns/op	         0.2185 ns/call
+BenchmarkCallCost/go-inline-15   	1000000000	         0.2181 ns/op	         0.2181 ns/call
+BenchmarkCallCost/go-inline-15   	1000000000	         0.2185 ns/op	         0.2185 ns/call
+BenchmarkCallCost/go-inline-15   	1000000000	         0.2185 ns/op	         0.2185 ns/call
+$ cd /tmp/gorecon && go test -run XXX -bench BenchmarkCallCost -count=10 ./...
+
+== A discarded earlier invocation, recorded because the drift is the point ==
+An earlier invocation of the same table/scan suite (before the -17b and resliced variants were added) measured SWARScan/unsafe/413 at 10.32-10.56 ns/row against 10.60-10.79 in the authoritative run above: identical code, non-overlapping ranges, 2-3% apart. Nothing is compared across the two, and only the run above is quoted in the report.
+
+== Probe sources, transcribed verbatim (the only record; /tmp is not durable) ==
+
+--- /tmp/gorecon/go.mod ---
+module gorecon
+
+go 1.27
+
+require github.com/noelruault/research/1brc/code/gen v0.0.0
+
+replace github.com/noelruault/research/1brc/code/gen => /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/gen
+
+--- /tmp/gorecon/corpus.go ---
+package gorecon
+
+import (
+	"bytes"
+	"sync"
+
+	gen "github.com/noelruault/research/1brc/code/gen"
+)
+
+const benchRows = 1 << 19
+
+type corpus struct {
+	bytes []byte
+	rows  int
+}
+
+func corpusOf(stations []gen.Station, rows int, seed uint64) *corpus {
+	var buf bytes.Buffer
+	buf.Grow(rows * 16)
+	if _, err := gen.Write(&buf, stations, int64(rows), 10.0, seed); err != nil {
+		panic(err)
+	}
+	b := buf.Bytes()
+	// Kernels over-fetch 8 bytes past the last newline; a real reader over-allocates its chunk buffer the same way.
+	padded := make([]byte, len(b), len(b)+16)
+	copy(padded, b)
+	return &corpus{bytes: padded, rows: bytes.Count(b, []byte{'\n'})}
+}
+
+var corpus413 = sync.OnceValue(func() *corpus { return corpusOf(gen.Official413(), benchRows, 0x1B4C) })
+var corpus10k = sync.OnceValue(func() *corpus { return corpusOf(gen.Synthetic10k(), benchRows, 0x1B4C) })
+
+--- /tmp/gorecon/asmadd.go ---
+package gorecon
+
+// asmAdd adds two uint64s in Plan 9 assembly, so a benchmark can price the call the assembly costs and nothing else.
+func asmAdd(a, b uint64) uint64
+
+--- /tmp/gorecon/asmadd_arm64.s ---
+#include "textflag.h"
+
+// func asmAdd(a, b uint64) uint64
+TEXT ·asmAdd(SB), NOSPLIT, $0-24
+	MOVD	a+0(FP), R0
+	MOVD	b+8(FP), R1
+	ADD	R1, R0, R0
+	MOVD	R0, ret+16(FP)
+	RET
+
+--- /tmp/gorecon/probe_test.go ---
+package gorecon
+
+import (
+	"bytes"
+	"encoding/binary"
+	"fmt"
+	"math/bits"
+	"runtime"
+	"testing"
+	"unsafe"
+
+	gen "github.com/noelruault/research/1brc/code/gen"
+)
+
+// ---------- probe 1: H4, is a name PREFIX enough to hash on? ----------
+
+// TestPrefixCollisions counts, for both key sets, how many distinct names share an 8- and a 16-byte prefix.
+// A prefix hash is only usable if a full-key compare resolves the collisions cheaply, so the number that matters is how many names land on the busiest prefix.
+func TestPrefixCollisions(t *testing.T) {
+	for _, ks := range []struct {
+		name     string
+		stations []gen.Station
+	}{{"413-official", gen.Official413()}, {"10k-synthetic", gen.Synthetic10k()}} {
+		names := make([]string, 0, len(ks.stations))
+		for _, s := range ks.stations {
+			names = append(names, s.Name)
+		}
+		for _, w := range []int{8, 16} {
+			groups := map[string][]string{}
+			for _, n := range names {
+				k := n
+				if len(k) > w {
+					k = k[:w]
+				}
+				groups[k] = append(groups[k], n)
+			}
+			worst, colliding, groupsWithCollisions := 0, 0, 0
+			var worstKey string
+			for k, g := range groups {
+				if len(g) > 1 {
+					groupsWithCollisions++
+					colliding += len(g)
+				}
+				if len(g) > worst {
+					worst, worstKey = len(g), k
+				}
+			}
+			over := 0
+			for _, n := range names {
+				if len(n) > w {
+					over++
+				}
+			}
+			t.Logf("%s w=%d: names=%d distinct_prefixes=%d names_over_w=%d (%.1f%%) colliding_groups=%d colliding_names=%d worst_group=%d (%q)",
+				ks.name, w, len(names), len(groups), over, 100*float64(over)/float64(len(names)), groupsWithCollisions, colliding, worst, worstKey)
+		}
+	}
+}
+
+// ---------- the three table shapes, one scan for all of them ----------
+
+type acc struct {
+	min, max int32
+	sum      int64
+	count    int32
+}
+
+const (
+	fnvOffset = 14695981039346656037
+	fnvPrime  = 1099511628211
+	tableBits = 14
+	tableSize = 1 << tableBits
+)
+
+type entry struct {
+	key []byte
+	a   acc
+}
+
+// probeTable is linear-probed open addressing: power-of-two buckets, key bytes copied on insert, collisions resolved by a full compare.
+type probeTable struct {
+	e    []entry
+	mask uint64
+	size int
+}
+
+func newProbeTable(bits int) *probeTable {
+	return &probeTable{e: make([]entry, 1<<bits), mask: 1<<bits - 1}
+}
+
+func (t *probeTable) update(h uint64, name []byte, temp int32) {
+	i := int(h & t.mask)
+	for {
+		if t.e[i].key == nil {
+			k := make([]byte, len(name))
+			copy(k, name)
+			t.e[i] = entry{key: k, a: acc{min: temp, max: temp, sum: int64(temp), count: 1}}
+			t.size++
+			return
+		}
+		if bytes.Equal(t.e[i].key, name) {
+			a := &t.e[i].a
+			a.min = min(a.min, temp)
+			a.max = max(a.max, temp)
+			a.sum += int64(temp)
+			a.count++
+			return
+		}
+		i = (i + 1) & int(t.mask)
+	}
+}
+
+func fnvOf(name []byte) uint64 {
+	h := uint64(fnvOffset)
+	for _, c := range name {
+		h ^= uint64(c)
+		h *= fnvPrime
+	}
+	return h
+}
+
+// prefixHashOf hashes at most the first 8 bytes of the name, which is what r10 in the Go corpus does; the table's full compare is what keeps it correct.
+func prefixHashOf(name []byte) uint64 {
+	var w uint64
+	if len(name) >= 8 {
+		w = binary.LittleEndian.Uint64(name)
+	} else {
+		for i := len(name) - 1; i >= 0; i-- {
+			w = w<<8 | uint64(name[i])
+		}
+	}
+	return (w ^ w>>29) * 0x9E3779B97F4A7C15
+}
+
+func parseTemp(b []byte) (int32, int) {
+	i := 0
+	neg := false
+	if b[i] == '-' {
+		neg = true
+		i++
+	}
+	t := int32(b[i] - '0')
+	i++
+	if b[i] != '.' {
+		t = t*10 + int32(b[i]-'0')
+		i++
+	}
+	i++
+	t = t*10 + int32(b[i]-'0')
+	i += 2
+	if neg {
+		t = -t
+	}
+	return t, i
+}
+
+// BenchmarkTable is three table shapes behind one identical scan: the delta between any two is the table and nothing else.
+// scan-only is the floor, reported as context and never used for a verdict, because it is a differently-shaped loop.
+func BenchmarkTable(b *testing.B) {
+	for _, c := range []struct {
+		label string
+		c     *corpus
+	}{{"413", corpus413()}, {"10k", corpus10k()}} {
+		buf, rows := c.c.bytes, c.c.rows
+
+		b.Run("gomap/"+c.label, func(b *testing.B) {
+			for range b.N {
+				m := make(map[string]*acc, tableSize)
+				for pos := 0; pos < len(buf); {
+					sep := bytes.IndexByte(buf[pos:], ';')
+					name := buf[pos : pos+sep]
+					temp, n := parseTemp(buf[pos+sep+1:])
+					if a := m[string(name)]; a != nil {
+						a.min = min(a.min, temp)
+						a.max = max(a.max, temp)
+						a.sum += int64(temp)
+						a.count++
+					} else {
+						m[string(name)] = &acc{min: temp, max: temp, sum: int64(temp), count: 1}
+					}
+					pos += sep + 1 + n
+				}
+			}
+			b.ReportMetric(float64(b.Elapsed().Nanoseconds())/float64(b.N)/float64(rows), "ns/row")
+		})
+
+		b.Run("openaddr-fnv/"+c.label, func(b *testing.B) {
+			for range b.N {
+				t := newProbeTable(tableBits)
+				for pos := 0; pos < len(buf); {
+					sep := bytes.IndexByte(buf[pos:], ';')
+					name := buf[pos : pos+sep]
+					temp, n := parseTemp(buf[pos+sep+1:])
+					t.update(fnvOf(name), name, temp)
+					pos += sep + 1 + n
+				}
+			}
+			b.ReportMetric(float64(b.Elapsed().Nanoseconds())/float64(b.N)/float64(rows), "ns/row")
+		})
+
+		b.Run("openaddr-prefix8-17b/"+c.label, func(b *testing.B) {
+			for range b.N {
+				t := newProbeTable(17)
+				for pos := 0; pos < len(buf); {
+					sep := bytes.IndexByte(buf[pos:], ';')
+					name := buf[pos : pos+sep]
+					temp, n := parseTemp(buf[pos+sep+1:])
+					t.update(prefixHashOf(name), name, temp)
+					pos += sep + 1 + n
+				}
+			}
+			b.ReportMetric(float64(b.Elapsed().Nanoseconds())/float64(b.N)/float64(rows), "ns/row")
+		})
+
+		b.Run("openaddr-prefix8/"+c.label, func(b *testing.B) {
+			for range b.N {
+				t := newProbeTable(tableBits)
+				for pos := 0; pos < len(buf); {
+					sep := bytes.IndexByte(buf[pos:], ';')
+					name := buf[pos : pos+sep]
+					temp, n := parseTemp(buf[pos+sep+1:])
+					t.update(prefixHashOf(name), name, temp)
+					pos += sep + 1 + n
+				}
+			}
+			b.ReportMetric(float64(b.Elapsed().Nanoseconds())/float64(b.N)/float64(rows), "ns/row")
+		})
+
+		b.Run("scan-only/"+c.label, func(b *testing.B) {
+			var sink int64
+			for range b.N {
+				for pos := 0; pos < len(buf); {
+					sep := bytes.IndexByte(buf[pos:], ';')
+					temp, n := parseTemp(buf[pos+sep+1:])
+					sink += int64(temp) + int64(sep)
+					pos += sep + 1 + n
+				}
+			}
+			runtime.KeepAlive(sink)
+			b.ReportMetric(float64(b.Elapsed().Nanoseconds())/float64(b.N)/float64(rows), "ns/row")
+		})
+	}
+}
+
+// TestTablesAgree checks the three table shapes and the reference all produce the same aggregate, so the benchmark above is pricing correct work.
+func TestTablesAgree(t *testing.T) {
+	c := corpus413()
+	want, err := gen.Aggregate(bytes.NewReader(c.bytes))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		label string
+		hash  func([]byte) uint64
+	}{{"fnv", fnvOf}, {"prefix8", prefixHashOf}} {
+		tab := newProbeTable(tableBits)
+		for pos := 0; pos < len(c.bytes); {
+			sep := bytes.IndexByte(c.bytes[pos:], ';')
+			name := c.bytes[pos : pos+sep]
+			temp, n := parseTemp(c.bytes[pos+sep+1:])
+			tab.update(tc.hash(name), name, temp)
+			pos += sep + 1 + n
+		}
+		if tab.size != len(want) {
+			t.Fatalf("%s: %d stations, want %d", tc.label, tab.size, len(want))
+		}
+		for _, e := range tab.e {
+			if e.key == nil {
+				continue
+			}
+			w := want[string(e.key)]
+			if w == nil {
+				t.Fatalf("%s: %q not in reference", tc.label, e.key)
+			}
+			if int64(e.a.min) != int64(w.Min) || int64(e.a.max) != int64(w.Max) || e.a.sum != int64(w.Sum) || int64(e.a.count) != w.Count {
+				t.Fatalf("%s: %q got %+v want min=%d max=%d sum=%d count=%d", tc.label, e.key, e.a, w.Min, w.Max, w.Sum, w.Count)
+			}
+		}
+	}
+}
+
+// ---------- probe: slice-indexed SWAR against an unsafe.Pointer walk ----------
+
+const (
+	semiBroadcast = 0x3B3B3B3B3B3B3B3B
+	swarLow       = 0x0101010101010101
+	swarHigh      = 0x8080808080808080
+)
+
+func swarMatch(w uint64) uint64 {
+	x := w ^ semiBroadcast
+	return (x - swarLow) & ^x & swarHigh
+}
+
+func swarIndexSlice(b []byte) int {
+	i := 0
+	for ; i+8 <= len(b); i += 8 {
+		if m := swarMatch(binary.LittleEndian.Uint64(b[i:])); m != 0 {
+			return i + bits.TrailingZeros64(m)>>3
+		}
+	}
+	for ; i < len(b); i++ {
+		if b[i] == ';' {
+			return i
+		}
+	}
+	return -1
+}
+
+// swarIndexUnsafe is swarIndexSlice with the same arithmetic and an unsafe.Pointer walk instead of a slice index, which is the comparison the recon owes: does unsafe buy anything once the bounds check is already eliminated?
+func swarIndexUnsafe(b []byte) int {
+	if len(b) == 0 {
+		return -1
+	}
+	p := unsafe.Pointer(unsafe.SliceData(b))
+	i := 0
+	for ; i+8 <= len(b); i += 8 {
+		if m := swarMatch(*(*uint64)(unsafe.Add(p, i))); m != 0 {
+			return i + bits.TrailingZeros64(m)>>3
+		}
+	}
+	for ; i < len(b); i++ {
+		if *(*byte)(unsafe.Add(p, i)) == ';' {
+			return i
+		}
+	}
+	return -1
+}
+
+// swarIndexResliced is the stdlib's shape: guard on len, load from the front, advance the slice.
+// The prover sees the length guard immediately before the load, which is what the indexed version denies it.
+func swarIndexResliced(b []byte) int {
+	rest, off := b, 0
+	for len(rest) >= 8 {
+		if m := swarMatch(binary.LittleEndian.Uint64(rest)); m != 0 {
+			return off + bits.TrailingZeros64(m)>>3
+		}
+		rest = rest[8:]
+		off += 8
+	}
+	for i, c := range rest {
+		if c == ';' {
+			return off + i
+		}
+	}
+	return -1
+}
+
+func BenchmarkSWARScan(b *testing.B) {
+	for _, c := range []struct {
+		label string
+		c     *corpus
+	}{{"413", corpus413()}, {"10k", corpus10k()}} {
+		buf, rows := c.c.bytes, c.c.rows
+		b.Run("slice/"+c.label, func(b *testing.B) {
+			var sink int64
+			for range b.N {
+				for pos := 0; pos < len(buf); {
+					sep := swarIndexSlice(buf[pos:])
+					_, n := parseTemp(buf[pos+sep+1:])
+					sink += int64(sep)
+					pos += sep + 1 + n
+				}
+			}
+			runtime.KeepAlive(sink)
+			b.ReportMetric(float64(b.Elapsed().Nanoseconds())/float64(b.N)/float64(rows), "ns/row")
+		})
+		b.Run("resliced/"+c.label, func(b *testing.B) {
+			var sink int64
+			for range b.N {
+				for pos := 0; pos < len(buf); {
+					sep := swarIndexResliced(buf[pos:])
+					_, n := parseTemp(buf[pos+sep+1:])
+					sink += int64(sep)
+					pos += sep + 1 + n
+				}
+			}
+			runtime.KeepAlive(sink)
+			b.ReportMetric(float64(b.Elapsed().Nanoseconds())/float64(b.N)/float64(rows), "ns/row")
+		})
+		b.Run("unsafe/"+c.label, func(b *testing.B) {
+			var sink int64
+			for range b.N {
+				for pos := 0; pos < len(buf); {
+					sep := swarIndexUnsafe(buf[pos:])
+					_, n := parseTemp(buf[pos+sep+1:])
+					sink += int64(sep)
+					pos += sep + 1 + n
+				}
+			}
+			runtime.KeepAlive(sink)
+			b.ReportMetric(float64(b.Elapsed().Nanoseconds())/float64(b.N)/float64(rows), "ns/row")
+		})
+	}
+}
+
+func TestSWARScansAgree(t *testing.T) {
+	c := corpus413()
+	for pos := 0; pos < len(c.bytes); {
+		a, b := swarIndexSlice(c.bytes[pos:]), swarIndexUnsafe(c.bytes[pos:])
+		if a != b {
+			t.Fatalf("pos=%d: slice=%d unsafe=%d", pos, a, b)
+		}
+		_, n := parseTemp(c.bytes[pos+a+1:])
+		pos += a + 1 + n
+	}
+}
+
+// ---------- probe: does the garbage collector run at all in a v1-shaped loop? ----------
+
+// TestGCPressure aggregates the corpus the way v1 will (preallocated table, one reusable buffer, keys copied only on first sight) and reports what the collector saw.
+func TestGCPressure(t *testing.T) {
+	c := corpus413()
+	var before, after runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&before)
+	tab := newProbeTable(tableBits)
+	for pos := 0; pos < len(c.bytes); {
+		sep := bytes.IndexByte(c.bytes[pos:], ';')
+		name := c.bytes[pos : pos+sep]
+		temp, n := parseTemp(c.bytes[pos+sep+1:])
+		tab.update(prefixHashOf(name), name, temp)
+		pos += sep + 1 + n
+	}
+	runtime.ReadMemStats(&after)
+	t.Logf("rows=%d stations=%d: NumGC %d -> %d (delta %d), TotalAlloc delta %d B, Mallocs delta %d",
+		c.rows, tab.size, before.NumGC, after.NumGC, after.NumGC-before.NumGC,
+		after.TotalAlloc-before.TotalAlloc, after.Mallocs-before.Mallocs)
+	if tab.size == 0 {
+		t.Fatal("aggregated nothing")
+	}
+}
+
+// ---------- probe: what a non-inlinable assembly call costs ----------
+
+func goAddInline(a, b uint64) uint64 { return a + b }
+
+// BenchmarkCallCost prices the assembly-interop tax directly: the same one-instruction addition, once through Plan 9 assembly and once inlinable.
+func BenchmarkCallCost(b *testing.B) {
+	b.Run("asm", func(b *testing.B) {
+		acc := uint64(0)
+		for range b.N {
+			acc = asmAdd(acc, 1)
+		}
+		runtime.KeepAlive(acc)
+		b.ReportMetric(float64(b.Elapsed().Nanoseconds())/float64(b.N), "ns/call")
+	})
+	b.Run("go-inline", func(b *testing.B) {
+		acc := uint64(0)
+		for range b.N {
+			acc = goAddInline(acc, 1)
+		}
+		runtime.KeepAlive(acc)
+		b.ReportMetric(float64(b.Elapsed().Nanoseconds())/float64(b.N), "ns/call")
+	})
+}
+
+func TestAsmAdd(t *testing.T) {
+	if got := asmAdd(41, 1); got != 42 {
+		t.Fatalf("asmAdd(41,1) = %d", got)
+	}
+	if fmt.Sprint(asmAdd(^uint64(0), 1)) != "0" {
+		t.Fatal("asmAdd does not wrap like Go's +")
+	}
+}
