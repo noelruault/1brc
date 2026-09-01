@@ -6,6 +6,7 @@ import (
 	"math/rand/v2"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -388,4 +389,12 @@ func referenceOutput(t *testing.T, body string) string {
 func referenceError(body string) error {
 	_, err := gen.Aggregate(strings.NewReader(body))
 	return err
+}
+
+// TestTheDefaultOversubscribesTheCores pins the decision E-17 bought, not the number it landed on: reverting the default to one worker per core fails here.
+func TestTheDefaultOversubscribesTheCores(t *testing.T) {
+	cores := runtime.NumCPU()
+	if got := defaultWorkers(); got <= cores {
+		t.Fatalf("defaultWorkers() = %d on %d cores, want more: E-17 measured one-per-core 7.5%% slower", got, cores)
+	}
 }

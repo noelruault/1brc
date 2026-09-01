@@ -1,0 +1,55 @@
+# experiment 2026-09-01T164052Z
+hypothesis: E-17 - the two knobs re-measured with a 20 s cooldown, incumbent at both ends
+prediction: E-16 measured 0.0302 s of drift per slot with no cooldown; if 20 s of idle restores the machine, the two default arms bracketing this invocation land within 1% of each other and the knobs can be ranked
+file:     measurements-1b.txt   runs: 4   warmup: 1   cooldown: 20s
+commit:   4498b8bf8427b3093046cd693e957ab9633b1ee4 (DIRTY WORKING TREE)
+go:       go version go1.27.0 darwin/arm64
+machine:  Apple M5 Pro, hw.ncpu 15, 24 GiB, 26.5.2 arm64
+hyperfine: hyperfine 1.20.0
+power:    'Battery Power' 	21%; discharging; 2:20 remaining present: true
+load:     18:40  up 1 day,  8:59, 18 users, load averages: 2.72 5.89 5.48
+PROVISIONAL: measured on battery, spec.md:42 requires the headline on AC power
+
+$ default.a: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+$ w20: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -workers 20 > /dev/null
+$ buf8M: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -buf 8192 > /dev/null
+$ default.b: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+
+Benchmark 1: default.a
+  Time (mean ± σ):      1.729 s ±  0.057 s    [User: 18.656 s, System: 2.304 s]
+  Range (min … max):    1.681 s …  1.812 s    4 runs
+ 
+Benchmark 2: w20
+  Time (mean ± σ):      1.613 s ±  0.047 s    [User: 18.541 s, System: 2.282 s]
+  Range (min … max):    1.568 s …  1.659 s    4 runs
+ 
+Benchmark 3: buf8M
+  Time (mean ± σ):      1.812 s ±  0.030 s    [User: 18.652 s, System: 2.434 s]
+  Range (min … max):    1.777 s …  1.844 s    4 runs
+ 
+Benchmark 4: default.b
+  Time (mean ± σ):      1.773 s ±  0.034 s    [User: 18.669 s, System: 2.343 s]
+  Range (min … max):    1.733 s …  1.815 s    4 runs
+ 
+Summary
+  w20 ran
+    1.07 ± 0.05 times faster than default.a
+    1.10 ± 0.04 times faster than default.b
+    1.12 ± 0.04 times faster than buf8M
+
+== ledger row skeleton, paste into 07-experiment-ledger.md and write the verdict ==
+
+### E-NN — E-17 - the two knobs re-measured with a 20 s cooldown, incumbent at both ends
+
+- **Idea:** 
+- **Prediction:** E-16 measured 0.0302 s of drift per slot with no cooldown; if 20 s of idle restores the machine, the two default arms bracketing this invocation land within 1% of each other and the knobs can be ranked
+- **Measured, invocation 2026-09-01T164052Z (1b, 4 runs, one hyperfine invocation):**
+
+  | Command | Mean [s] | Min [s] | Max [s] | Relative |
+  |:---|---:|---:|---:|---:|
+  | `default.a` | 1.729 ± 0.057 | 1.681 | 1.812 | 1.07 ± 0.05 |
+  | `w20` | 1.613 ± 0.047 | 1.568 | 1.659 | 1.00 |
+  | `buf8M` | 1.812 ± 0.030 | 1.777 | 1.844 | 1.12 ± 0.04 |
+  | `default.b` | 1.773 ± 0.034 | 1.733 | 1.815 | 1.10 ± 0.04 |
+
+- **Verdict:** 

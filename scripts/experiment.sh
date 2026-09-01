@@ -22,6 +22,9 @@ usage: experiment.sh -i <hypothesis-id> -p <prediction> -a <name>=<flags> -a <na
   -a  one arm, name=flags. At least two: a delta needs something to be a delta from.
       The first arm should be the incumbent, because a percentage is relative to the arm being replaced.
   -f  measurement file, default 1b. Anything else needs --mechanism-only (E-09).
+  -c  cooldown seconds slept before every timed run, default 20 at 1b and 0 elsewhere.
+      E-16: without it, eight IDENTICAL arms rise monotonically by 21% and the arm named
+      first wins whatever it is. 0 is allowed and stamps the file NOT SLOT-CORRECTED.
 
   --self-test  run the argument and invariant checks and exit; touches no data file.
 
@@ -33,6 +36,7 @@ USAGE
 
 parse_args() {
   HYP=""; PRED=""; FILE="1b"; RUNS="${RUNS:-5}"; WARMUP="${WARMUP:-1}"; MECHANISM_ONLY=0
+  COOLDOWN=""
   ARM_NAMES=(); ARM_FLAGS=()
   while (($#)); do
     case "$1" in
@@ -41,6 +45,7 @@ parse_args() {
       -f) [[ $# -ge 2 ]] || die "-f needs a value"; FILE="$2"; shift 2 ;;
       -r) [[ $# -ge 2 ]] || die "-r needs a value"; RUNS="$2"; shift 2 ;;
       -w) [[ $# -ge 2 ]] || die "-w needs a value"; WARMUP="$2"; shift 2 ;;
+      -c) [[ $# -ge 2 ]] || die "-c needs a value"; COOLDOWN="$2"; shift 2 ;;
       -a)
         [[ $# -ge 2 ]] || die "-a needs a value"
         [[ $2 == *=* ]] || die "arm must be name=flags, got: $2"
@@ -70,6 +75,8 @@ validate() {
   if [[ $FILE != 1b && $MECHANISM_ONLY -eq 0 ]]; then
     die "E-09: seven arms, seven disagreements between $FILE and 1b. Pass --mechanism-only to record a non-verdict."
   fi
+  [[ -n $COOLDOWN ]] || { [[ $FILE == 1b ]] && COOLDOWN=20 || COOLDOWN=0; }
+  [[ $COOLDOWN =~ ^[0-9]+$ ]] || die "cooldown ('$COOLDOWN') must be a whole number of seconds (-c); E-16: it is what stops an arm's slot deciding its rank."
 }
 
 # arm_command builds the timed command; the correctness check runs the same ARM_FLAGS entry, so a flag can never be measured without having been checked.
@@ -102,13 +109,15 @@ run() {
     echo "# experiment $stamp"
     echo "hypothesis: $HYP"
     echo "prediction: $PRED"
-    echo "file:     measurements-$FILE.txt   runs: $RUNS   warmup: $WARMUP"
+    echo "file:     measurements-$FILE.txt   runs: $RUNS   warmup: $WARMUP   cooldown: ${COOLDOWN}s"
     [[ $FILE == 1b ]] || echo "NOT A VERDICT: --mechanism-only on the $FILE file, E-09 forbids ranking arms here"
+    ((COOLDOWN)) || echo "NOT SLOT-CORRECTED: cooldown 0, so E-16's monotonic drift is in these numbers and the first arm is flattered"
     provenance_header "$REPO"
     echo
   } > "$out"
 
   local -a args=(--warmup "$WARMUP" --runs "$RUNS" --style basic --export-markdown "$md")
+  if ((COOLDOWN)); then args+=(--prepare "sleep $COOLDOWN"); fi
   for ((i = 0; i < ${#ARM_NAMES[@]}; i++)); do
     echo "\$ ${ARM_NAMES[i]}: $(arm_command "$i")" >> "$out"
     args+=(-n "${ARM_NAMES[i]}" "$(arm_command "$i")")
@@ -173,6 +182,20 @@ self_test() {
   expect 0 "the 100m file is allowed once labelled a non-verdict" \
     -i H-99 -p 'wins by 5%' -f 100m --mechanism-only "${two[@]}"
   expect 2 "an unknown flag is refused rather than ignored" -i H-99 -p 'wins by 5%' -z "${two[@]}"
+  expect_msg 2 'must be a whole number' "a non-numeric cooldown is refused" \
+    -i H-99 -p 'wins by 5%' -c later "${two[@]}"
+  expect 0 "cooldown 0 is allowed, and stamps the file NOT SLOT-CORRECTED" \
+    -i H-99 -p 'wins by 5%' -c 0 "${two[@]}"
+
+  # E-16's default is the rule this script exists to enforce, so assert the value, not just that it parses.
+  parse_args -i H-99 -p 'wins by 5%' "${two[@]}"; validate
+  if [[ $COOLDOWN != 20 ]]; then
+    echo "FAIL: a 1b run defaulted to cooldown '$COOLDOWN', not 20 (E-16)" >&2; fails=$((fails + 1))
+  else echo "ok: a 1b run defaults to a 20 s cooldown"; fi
+  parse_args -i H-99 -p 'wins by 5%' -f 100m --mechanism-only "${two[@]}"; validate
+  if [[ $COOLDOWN != 0 ]]; then
+    echo "FAIL: a non-1b run defaulted to cooldown '$COOLDOWN', not 0" >&2; fails=$((fails + 1))
+  else echo "ok: a non-1b run defaults to no cooldown"; fi
 
   # The flags reaching hyperfine must be the flags the correctness gate checked, verbatim.
   parse_args -i H-99 -p 'wins by 5%' -a 'incumbent=' -a 'oversubscribed=-workers 30'
