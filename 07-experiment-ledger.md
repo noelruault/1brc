@@ -6,6 +6,26 @@ Append-only. One row per experiment, each with the idea, the prediction made BEF
 
 **The measurement rule this ledger enforces**: a delta is only ever taken between two arms of the SAME hyperfine invocation, because the identical binary measured 1.667 s in one invocation and 1.717 s in another. Cross-invocation numbers are recorded and never subtracted.
 
+## The loop this ledger runs — and where it came from
+
+The optimization rounds run an autoresearch loop: **hypothesis queue → one experiment → one metric → keep/kill → ledger row → the queue is re-ranked**. The adaptation is [`1brc/scripts/experiment.sh`](scripts/experiment.sh), which runs exactly one experiment and refuses the runs that this study has already learned produce uninterpretable numbers.
+
+The primary sources are this repo's own prior art, because it has run this loop before and the traps it walked into are recorded: [`shapes-image-file-format/AUTORESEARCH.md`](../shapes-image-file-format/AUTORESEARCH.md) (the running log plus a ranked bottleneck queue, both in one handover file), [`shapes-image-file-format/METHODOLOGY.md`](../shapes-image-file-format/METHODOLOGY.md) (a pre-run and a post-run checklist), [`shapes-image-file-format/07-method-what-worked.md`](../shapes-image-file-format/07-method-what-worked.md) (the practices that caught real errors) and [`quantization/00-methodology.md`](../quantization/00-methodology.md) (piece-level against integration-level benchmarking). The secondary source is https://github.com/karpathy/autoresearch, fetched 2026-09-01 (see the data companion): an agent edits one file, `train.py`, trains for exactly five minutes, scores one metric, `val_bpb`, and keeps or discards.
+
+**Four things transplant, and each one is a check in the harness.**
+
+- **A fixed experiment budget** — karpathy's is five minutes of training per attempt, which buys ~12 attempts an hour. Ours is one hyperfine invocation on the 1b file: N arms at five runs plus a warmup, so an N-arm experiment costs about `(N+1) × 6 × 1.75 s` of timing plus a per-arm correctness pass. That is the same trade for the same reason, and it lands on this ledger's binding rule for free, because all the arms are in one invocation.
+- **One edit surface.** karpathy's agent only edits `train.py`. Every hypothesis here has instead become a **flag on one binary** — `-split`, `-table`, `-io`, `-parse`, `-kernel` — which is `METHODOLOGY.md` §1.1's "add a pricing function; never replace the baseline" in the form this problem takes. The incumbent is arm 1 of every invocation, so `AUTORESEARCH.md`'s "reproduce the baseline before changing anything" happens inside the run rather than against a published number.
+- **A predicted number before the run.** `07-method-what-worked.md`: "An investigation that predicts 5 KB and measures 21 KB has learned something; one that only measures has produced a number nobody can interpret." `experiment.sh -p` is mandatory and must contain a digit; a knob-turn with no mechanism is allowed only as `-p 'sweep: <why>'`, which is E-06's precedent and labels the row honestly.
+- **A clean negative is a result.** `AUTORESEARCH.md`: "If it does not: add the log entry anyway with the number that killed it." Four of the eleven rows here are kills, and E-09 and E-11 are method rules extracted from kills.
+
+**Two things deliberately do NOT transplant.**
+
+- **The automatic keep/discard.** karpathy's loop compares one scalar and decides. Ours cannot: the verdict vocabulary above has four outcomes and `SPLIT` exists because E-03 and E-05 both depend on the input, so a scalar comparison would have thrown away a flag that is still the right default on one of the two key sets. `experiment.sh` measures, gates and pre-fills the row; **a human or an agent writes the verdict**, and `- **Verdict:**` is emitted blank on purpose.
+- **Iterating on a cheaper proxy.** The obvious speedup is to run the loop on the 100m file at a tenth the cost. E-09 measured that it does not rank arms — seven arms, seven disagreements — so `experiment.sh` refuses any file but 1b unless `--mechanism-only` is passed, and then stamps `NOT A VERDICT` on the output. Mechanism evidence at 100m is welcome; verdicts from it are not.
+
+One rule from `quantization/00-methodology.md` is already load-bearing here and needs no new machinery: piece-level and integration-level are **two different measurements**, and E-11 is what happens when a piece-level number is quoted as an integration-level one.
+
 ## Where v1 stands
 
 | | measured | source |
@@ -41,7 +61,7 @@ Derived, from the same run: 19.657 s of user CPU for 1.742 s of wall clock is **
 - **Idea:** probe an array of 8-byte hashes instead of 48-byte entries [CORRECTED, C4: published as 32-byte], so a miss touches a sixth as much memory [CORRECTED, C4: published as "a quarter"].
 - **Prediction** (H5): **≥10%** better on the 10k-station file, **≈0%** on the 413 one. `05-go-techniques.md` sharpened the mechanism: at 1<<17 buckets the entry array is 6.00 MiB touched at random [CORRECTED, C4: published as 4 MiB] and the hash array is 1 MiB.
 - **Measured, invocation B (1b, 413 stations):** combined **1.667 s** [1.643-1.685], split **1.743 s** [1.726-1.769]. Split is **4.6% slower**, disjoint. At 100m the ranges overlap.
-- **Verdict: SPLIT — the 413 half is KILLED-on-numbers** (against 1.667 s), **the 10k half is PARKED and untested**, because there is no 1-billion-row 10,000-station file: the 10k stressor is a 10m file, where nothing is I/O bound and no wall-clock verdict is meaningful. The flag stays (`-table split`). **Revive trigger:** generate a 1b 10k-station file (the generator does 725 MB/s, so ~20 s) and re-run; that is also the only condition under which `05-go-techniques.md`'s working-set hypothesis can be tested end to end.
+- **Verdict: SPLIT — the 413 half is KILLED-on-numbers** (against 1.667 s), **the 10k half is PARKED and untested**, because there is no 1-billion-row 10,000-station file: the 10k stressor is a 10m file, where nothing is I/O bound and no wall-clock verdict is meaningful. The flag stays (`-table split`). **Revive trigger:** generate a 1b 10k-station file (the generator does 725 MB/s, so ~20 s) [CORRECTED, C5: 57.09 GB and ~79 s, and at 2.22× RAM it is a different regime — the queue board argues for an equal-BYTES 241.6M-row file instead] and re-run; that is also the only condition under which `05-go-techniques.md`'s working-set hypothesis can be tested end to end.
 
 ### E-04 — mmap the whole file (H7)
 
@@ -109,7 +129,7 @@ Ordered by the size of the gap each could close. The gap to shut is **0.742 s**,
 5. **`unsafe.Add` pointer walks** in the fold loop: measured ceiling 4-16% on the scan in isolation (`05-go-techniques.md`), with the resliced-versus-unsafe gap there still unexplained.
 6. **More workers than cores** (`-workers 20`, `-workers 30`): if part of the idle 25% is I/O wait, oversubscription hides it. Untried, and the cheapest experiment left.
 7. **Buffer sizes above 4 MiB** at 1b: 8 and 16 MiB untried at the scale where 4 beat 1.
-8. **A 1b 10,000-station file** to settle E-03's parked half and `05-go-techniques.md`'s working-set hypothesis. ~20 s of generation.
+8. **A 1b 10,000-station file** to settle E-03's parked half and `05-go-techniques.md`'s working-set hypothesis. ~20 s of generation. [CORRECTED, C5: 57.09 GB and ~79 s; see the queue board.]
 9. **Go's runtime map for the 10k case**: measured 3.7% FASTER than the best open-addressing arm on 10k names single-threaded (`05-go-techniques.md`). Never tested end-to-end, and would need item 8 first.
 10. **The merge and the output.** 10,000 stations means 10,000 `map` inserts per shard at drain time and a sort; at 413 stations it is invisible, at 10k it may not be. Unmeasured.
 
@@ -121,3 +141,40 @@ Four hypotheses, each borrowed from a field that solves the same shape of proble
 12. **H-12 — vectorize the table probe, not only the scan.** Compute a batch of hashes, issue all their bucket loads, then resolve, turning one dependent-load chain into N overlappable misses. Borrowed from vectorized query execution. **Prediction:** under 3% at 413 stations (0.3% load factor, the hot set stays in L2), over 10% at 10,000. The interesting half needs item 8.
 13. **H-13 — a quotiented 32-byte entry.** Replace the 24-byte `[]byte` key header with an inline 8-byte prefix and a side array for the full name: 48 bytes becomes 32, the probed array shrinks 1.5x, and the hot compare is one word instead of a pointer chase. Borrowed from k-mer count tables. **Prediction:** 0 to 4% at 413. Deliberately close to E-03, which lost 4.6% doing something adjacent; the difference is that this adds no second array in the HIT path, and if it loses too then the neighbourhood is exhausted rather than untried.
 14. **H-14 — double-buffer each worker.** `foldRange` calls `ReadAt`, waits, then folds, in one goroutine, alternating; a reader goroutine filling buffer B while the fold runs on buffer A makes the overlap explicit instead of leaving the OS to cover one worker's read with another's compute. Borrowed from DPDK's fill-while-you-process. **Prediction:** 5% up to a ceiling of 25% — 19.657 s of CPU over 15 busy cores is 1.310 s against the measured 1.742 s, which assumes every idle core is idle because of a read stall and is therefore a ceiling, not a forecast. Largest single-mechanism candidate found by the transfer pass.
+
+## The queue board — state, cost, and the command
+
+The two lists above hold the hypotheses and their reasoning. This is their **state**, and it is what `go-opt-round-1` dispatches from; the numbering is theirs, never reassigned, because E-10 cites "queue item 2" and a renumbered queue would silently re-point it. Thirteen of the fourteen seeded items are open, which satisfies the harness ticket's floor of ten.
+
+**Runnable now** means every arm is already a flag on the shipped binary, so the experiment costs only its own timing — about `(N+1) × 6 × 1.75 s` for N arms at 1b, plus a correctness pass per arm. **Needs code** means an arm has to be built and gated first, and the ledger row cannot be opened until it is.
+
+| # | hypothesis | state | what it takes |
+|---|---|---|---|
+| 6 | more workers than cores | **runnable now** | `-workers 20`, `-workers 30`; the cheapest experiment in the queue |
+| 7 | buffers above 4 MiB | **runnable now** | `-buf 8192`, `-buf 16384`; 4 MiB beat 1 MiB by 2.8% at 1b and the top of the range is untried |
+| 11 | H-11, core-class-weighted split | needs a measurement, then code | measure `r` (the Super/Performance throughput ratio) on a resident buffer first — the prediction is a function of `r` and `r` is unmeasured |
+| 14 | H-14, double-buffer each worker | needs code | a fill-ahead goroutine per worker behind a flag; largest single-mechanism candidate, ceiling 25% |
+| 4 | the correctness tax, priced | needs code | a trusting arm that skips `validTemp` and the dual-needle scan; it must never become the default, only the price tag |
+| 13 | H-13, quotiented 32-byte entry | needs code | inline 8-byte prefix in `entry`, full names in a side array; adjacent to E-03, which lost 4.6% |
+| 5 | `unsafe.Add` pointer walks in the fold | needs code | measured ceiling 4-16% in isolation, and half of that was reachable in safe Go |
+| 1 | fuse the name hash into the separator scan | needs code | its own prediction says small; run it after 6 and 7 |
+| 8 | a 1b-row 10,000-station file | **re-priced, see below** | ~79 s of generation and 57.09 GB [CORRECTED, C5: published as "~20 s"], and it changes the regime |
+| 9 | Go's runtime map for the 10k case | needs code **and** item 8 | no map arm exists in the binary; `05-go-techniques.md` measured it single-threaded only |
+| 12 | H-12, vectorized table probe | needs code, interesting half needs item 8 | predicted under 3% at 413 stations, over 10% at 10,000 |
+| 10 | the merge and the output at 10k stations | needs item 8 | 10,000 inserts per shard at drain time plus a sort, unmeasured |
+| 3 | the idle 25% of the cores | not an experiment | a profile, which is what `go-opt-round-2` is defined to be |
+| 2 | the batch tokenizer | **CLOSED — E-10, KILLED-on-numbers** | `-kernel batch-swar` and `-kernel batch-neon` stay for reproduction |
+
+The two runnable rows, verbatim:
+
+```
+bash 1brc/scripts/experiment.sh -i 'queue item 6 - more workers than cores' \
+  -p 'if part of the idle 25% is read stall, oversubscription hides it: 3-8%' \
+  -a 'workers15=' -a 'workers20=-workers 20' -a 'workers30=-workers 30'
+
+bash 1brc/scripts/experiment.sh -i 'queue item 7 - buffers above 4 MiB' \
+  -p 'sweep: 4 MiB beat 1 MiB by 2.8% at 1b, 8 and 16 MiB untried at that scale' \
+  -a 'buf4M=' -a 'buf8M=-buf 8192' -a 'buf16M=-buf 16384'
+```
+
+**Item 8 is not the cheap unblocker three other items assume it is, and the reason is a design question, not a cost one.** Derived from the recorded size of `measurements-10k-stations-10m.txt` (570,941,611 B for 10,000,000 rows, `02-baseline-data.txt`): the 10k key set costs **57.09 bytes per row** against the official set's 13.80, because the synthetic names are longer. A *1-billion-row* 10k file is therefore **57.09 GB — 2.22× this machine's RAM**, where `measurements-1b.txt` is 53.5% of it, and its read floor alone is **3.12 s** at the 18.3 GB/s measured in `02-baseline.md`. Every arm would land three times over target before any compute, so nothing measured there could be compared with the 1.742 s headline. Holding **bytes** constant instead gives **241.6M rows** at 13.80 GB, which reproduces the memory regime the 1b file established and is the file items 9, 10 and 12 actually want. The round must pick one knob and say which; generating both is 79 s and 19 s of a generator that reproduces byte-for-byte from its seed, and 329 GB of disk is free.

@@ -134,3 +134,108 @@ Summary
 == The committed bench record (the headline's source) =========================
 ==============================================================================
 file: 1brc/bench/2026-09-01T152951Z-v1-parallel.txt
+
+==============================================================================
+== go-autoresearch-harness: sources, self-test, smoke, and C5's derivation ====
+==============================================================================
+
+-- 1. The secondary source, fetched -------------------------------------------
+
+$ WebFetch https://github.com/karpathy/autoresearch   # 2026-09-01
+What the README states, and only what it states: the agent "modifies the code, trains for 5 minutes,
+checks if the result improved, keeps or discards, and repeats". The edited file is train.py, "the
+single file the agent edits", holding the GPT model, the Muon+AdamW optimizer and the training loop.
+Agent instructions live in program.md, and the user kicks a run off by pointing the agent at it. The
+metric is val_bpb, "lower is better, and vocab-size-independent so architectural changes are fairly
+compared". Training "always runs for exactly 5 minutes, regardless of your specific platform", which
+the README prices at ~12 experiments/hour and "100 experiments while you sleep".
+NOT stated in the README, and therefore NOT attributed to it in the ledger: how a hypothesis is
+proposed, the numeric keep/kill threshold, and any rule about seeds, baselines or reproducibility.
+
+The primary sources are in-repo and were read, not summarised from memory:
+  shapes-image-file-format/AUTORESEARCH.md          (683 lines; mission, invariants, ranked queue, log)
+  shapes-image-file-format/METHODOLOGY.md           (109 lines; pre-run and post-run checklists)
+  shapes-image-file-format/07-method-what-worked.md  (75 lines; the practices that caught real errors)
+  quantization/00-methodology.md                    (126 lines; piece-level vs integration-level)
+
+-- 2. experiment.sh --self-test, at commit 42b5b3d ----------------------------
+
+$ bash 1brc/scripts/experiment.sh --self-test
+ok: a hypothesis, a numeric prediction and two arms is a valid experiment
+ok: no hypothesis id is refused
+ok: no prediction is refused
+ok: a prediction with no number is refused
+ok: a labelled sweep may carry no number
+ok: one arm is refused: a delta needs something to be a delta from
+ok: duplicate arm names are refused
+ok: an arm without a name is refused
+ok: an arm that is not name=flags is refused
+ok: E-09: the 100m file is refused as a verdict
+ok: the 100m file is allowed once labelled a non-verdict
+ok: an unknown flag is refused rather than ignored
+ok: the timed command carries the arm's flags and the measured file
+ok: an incumbent arm with no flags parses
+experiment --self-test: all checks passed
+
+-- 3. The correctness gate now takes an arm's flags ---------------------------
+
+$ bash 1brc/scripts/check-correctness.sh
+check-correctness: OK   measurements-10m.txt (413 stations, 0s)
+check-correctness: OK   measurements-10k-stations-10m.txt (10000 stations, 0s)
+
+$ ARM='-parse scalar -workers 4' bash 1brc/scripts/check-correctness.sh
+check-correctness: OK   measurements-10m.txt (413 stations, 0s) [-parse scalar -workers 4]
+check-correctness: OK   measurements-10k-stations-10m.txt (10000 stations, 0s) [-parse scalar -workers 4]
+
+$ ARM='-nosuchflag' bash 1brc/scripts/check-correctness.sh; echo "EXIT: $?"
+flag provided but not defined: -nosuchflag
+EXIT: 2
+    (the mutation that proves ARM reaches the binary rather than being dropped on the floor)
+
+-- 4. The harness end to end, and the abort path ------------------------------
+
+$ bash 1brc/scripts/experiment.sh -i 'harness smoke' \
+    -p 'sweep: proves the harness runs end to end, not a result' \
+    -f 10m --mechanism-only -r 2 -w 1 -a 'incumbent=' -a 'scalar-parse=-parse scalar'
+EXIT: 0, wrote 1brc/bench/2026-09-01T161727Z-harness-smoke.txt
+    (that file is committed and is NOT a result: it carries the script's own
+     "NOT A VERDICT: --mechanism-only on the 10m file, E-09 forbids ranking arms here" stamp)
+
+$ bash 1brc/scripts/experiment.sh -i 'abort proof' \
+    -p 'sweep: an arm that cannot pass the byte-compare must never be timed' \
+    -f 10m --mechanism-only -r 2 -a 'incumbent=' -a 'broken=-nosuchflag'
+experiment: arm 'broken' fails the byte-compare. spec.md: that is a bug, not a result.
+EXIT: 2
+bench files before=4 after=4    (no timing file written)
+grep -c Benchmark on the log: 0  (hyperfine never ran)
+
+-- 5. C5's derivation, from files this study already recorded ------------------
+
+$ ls -la /Users/noelruault/Downloads/1brc/1brc-assets/*.txt   # bytes, second column
+13795610267  measurements-1b.txt
+  570941611  measurements-10k-stations-10m.txt
+  137949720  measurements-10m.txt
+ 1379567344  measurements-100m.txt
+
+$ python3 -c "
+b10k=570941611; r=10_000_000
+per=b10k/r
+print(f'10k-station bytes/row: {per:.2f}')
+print(f'1e9 rows  -> {per*1e9/1e9:.2f} GB = {per*1e9/2**30:.1f} GiB')
+print(f'equal-BYTES rows at 13.795610267 GB: {13795610267/per/1e6:.1f}M rows')
+print(f'gen at 725 MB/s: {per*1e9/725e6:.0f} s')
+print(f'read floor at 18.3 GB/s: {per*1e9/18.3e9:.2f} s')
+print(f'x RAM (24 GiB): {per*1e9/2**30/24:.2f}')"
+10k-station bytes/row: 57.09
+1e9 rows  -> 57.09 GB = 53.2 GiB
+equal-BYTES rows at 13.795610267 GB: 241.6M rows
+gen at 725 MB/s: 79 s
+read floor at 18.3 GB/s: 3.12 s
+x RAM (24 GiB): 2.22
+
+    18.3 GB/s is 13.795610267 GB / 0.7544 s, the 15-uncached-pread floor in 02-baseline.md.
+    725 MB/s is the generator rate recorded in docs/1brc/lessons.md and 02-baseline-data.txt.
+    The official 1b file is 13.796 bytes/row against the 10k set's 57.09, a 4.14x ratio.
+
+$ df -g /Users/noelruault/Downloads | tail -1
+/dev/disk3s5       926  552       329    63%   (329 GB free, so both candidate files fit)
