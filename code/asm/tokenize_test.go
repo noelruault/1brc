@@ -45,6 +45,7 @@ func TestTokenizeBatchLeavesTheTailToItsCaller(t *testing.T) {
 	if c.Bytes[consumed-1] != '\n' {
 		t.Fatalf("batch stopped mid-row: byte %d is %q, want a newline", consumed-1, c.Bytes[consumed-1])
 	}
+	// TestBatchBenchLoopCoversEveryRow's driver is the benchmark's; this one only checks the single-call contract.
 	// A caller with room for fewer rows than the buffer holds must get exactly that many, and no write past its slice.
 	short := make([]Token, 7)
 	if n, _ := TokenizeBatch(c.Bytes, short); n != len(short) {
@@ -73,7 +74,7 @@ func referenceTokens(t *testing.T, c *Corpus) []Token {
 		if !ok {
 			t.Fatalf("reference: bad temperature at offset %d", pos+sep+1)
 		}
-		out = append(out, Token{NameLen: sep, Tenths: tenths})
+		out = append(out, Token{Start: int32(pos), NameLen: int32(sep), Tenths: int32(tenths)})
 		pos += sep + 1 + next
 	}
 	if len(out) != c.Rows {
@@ -87,6 +88,33 @@ func assertTokensEqual(t *testing.T, label string, got, want []Token) {
 	for i := range want {
 		if got[i] != want[i] {
 			t.Fatalf("%s: row %d = %+v, reference %+v", label, i, got[i], want[i])
+		}
+	}
+}
+
+// TestBatchBenchLoopCoversEveryRow reproduces BenchmarkTokenize/batch's exact driver loop and asserts it tokenizes the whole corpus against the reference.
+// reportRows divides by c.Rows, so a driver that stopped early would publish a per-row cost for work it never did.
+func TestBatchBenchLoopCoversEveryRow(t *testing.T) {
+	for name, c := range map[string]*Corpus{"413": Corpus413(), "10k": Corpus10k()} {
+		want := referenceTokens(t, c)
+		out := make([]Token, 4096)
+		seen := 0
+		for pos := 0; pos < len(c.Bytes); {
+			rows, consumed := TokenizeBatch(c.Bytes[pos:], out)
+			if consumed == 0 {
+				break
+			}
+			for i, got := range out[:rows] {
+				got.Start += int32(pos)
+				if got != want[seen+i] {
+					t.Fatalf("%s: row %d = %+v, reference %+v", name, seen+i, got, want[seen+i])
+				}
+			}
+			seen += rows
+			pos += consumed
+		}
+		if seen != c.Rows {
+			t.Fatalf("%s: batch driver tokenized %d rows, corpus has %d (%.2f%% of the work the ns/row divisor assumes)", name, seen, c.Rows, 100*float64(seen)/float64(c.Rows))
 		}
 	}
 }

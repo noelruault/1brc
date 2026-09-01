@@ -2,10 +2,13 @@ package asm
 
 import "math/bits"
 
-// Token is what a tokenizer recovers from one row. The name bytes themselves stay in the buffer; the hot loop only ever needs their length and where the row started.
+// Token is what a tokenizer recovers from one row: enough to hash the name in place and fold the value, without materialising a string.
+// Start is load-bearing for the batch kernel and free for the staged ones, whose driver already holds the position; it is what a real aggregator needs to find the name bytes.
+// Three int32s keep the token at 12 bytes, which is the batch kernel's own memory traffic.
 type Token struct {
-	NameLen int
-	Tenths  int64
+	Start   int32
+	NameLen int32
+	Tenths  int32
 }
 
 // Tokenizer consumes one row from the front of b and returns the row's token and its length in bytes.
@@ -16,14 +19,14 @@ type Tokenizer func(b []byte) (Token, int)
 func TokenizeStagedSWAR(b []byte) (Token, int) {
 	sep := SWARIndexSemicolon(b)
 	tenths, next := BranchlessParseTemp(b[sep+1:])
-	return Token{NameLen: sep, Tenths: tenths}, sep + 1 + next
+	return Token{NameLen: int32(sep), Tenths: int32(tenths)}, sep + 1 + next
 }
 
 // TokenizeStagedNEON finds the separator with the 16-byte NEON compare, then parses the temperature.
 func TokenizeStagedNEON(b []byte) (Token, int) {
 	sep := NEONIndexSemicolon(b)
 	tenths, next := BranchlessParseTemp(b[sep+1:])
-	return Token{NameLen: sep, Tenths: tenths}, sep + 1 + next
+	return Token{NameLen: int32(sep), Tenths: int32(tenths)}, sep + 1 + next
 }
 
 // TokenizeScalar is the reference shape: scalar scan, scalar parse, no over-fetch. TokenizeAll uses it for the final row.
@@ -36,7 +39,7 @@ func TokenizeScalar(b []byte) (Token, int) {
 	if !ok {
 		return Token{}, 0
 	}
-	return Token{NameLen: sep, Tenths: tenths}, sep + 1 + next
+	return Token{NameLen: int32(sep), Tenths: int32(tenths)}, sep + 1 + next
 }
 
 // overfetchView extends buf into the OverfetchSlack bytes its caller guarantees are readable.
@@ -74,7 +77,7 @@ func TokenizeBatch(buf []byte, out []Token) (rows, consumed int) {
 				return rows, consumed
 			}
 			tenths, _ := BranchlessParseTemp(work[pendingSep+1:])
-			out[rows] = Token{NameLen: pendingSep - rowStart, Tenths: tenths}
+			out[rows] = Token{Start: int32(rowStart), NameLen: int32(pendingSep - rowStart), Tenths: int32(tenths)}
 			rows++
 			consumed = end + 1
 			rowStart = consumed
@@ -94,6 +97,7 @@ func TokenizeAll(fn Tokenizer, buf []byte, out []Token) int {
 		if n == 0 {
 			return rows
 		}
+		tok.Start = int32(pos)
 		out[rows] = tok
 		pos += n
 	}
@@ -106,5 +110,10 @@ func TokenizeAllBatch(buf []byte, out []Token) int {
 	if consumed >= len(buf) || rows == len(out) {
 		return rows
 	}
-	return rows + TokenizeAll(TokenizeScalar, buf[consumed:], out[rows:])
+	tail := TokenizeAll(TokenizeScalar, buf[consumed:], out[rows:])
+	// TokenizeAll numbers Start from the slice it was handed, so the tail's offsets have to be lifted back into the whole buffer.
+	for i := rows; i < rows+tail; i++ {
+		out[i].Start += int32(consumed)
+	}
+	return rows + tail
 }
