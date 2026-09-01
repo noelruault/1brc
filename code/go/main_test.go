@@ -24,7 +24,7 @@ func strategies() []config {
 	for _, split := range []string{"static", "cursor"} {
 		for _, layout := range []string{"combined", "split"} {
 			for _, io := range []string{"pread", "mmap"} {
-				for _, parse := range []string{"branchless", "scalar"} {
+				for _, parse := range []string{"branchless", "scalar", "word"} {
 					c := defaults()
 					c.Split, c.Table, c.IO, c.Parse = split, layout, io, parse
 					out = append(out, c)
@@ -255,6 +255,10 @@ func TestParseTempWordMatchesTheByteCheck(t *testing.T) {
 			if gotOK != wantOK {
 				t.Fatalf("%q (filler %#02x): parseTempWord ok=%v, parseTempBranchless+validTemp ok=%v", field[:6], filler, gotOK, wantOK)
 			}
+			// The incumbent pair is what this arm replaces, so agreeing with it is necessary but not independent; parseTempScalar is a separate implementation of the same shape and is the oracle the board asked for.
+			if scalarV, scalarNext, scalarOK := parseTempScalar(field); scalarOK != wantOK || (wantOK && (scalarV != wantV || scalarNext != wantNext)) {
+				t.Fatalf("%q: parseTempScalar = (%d, %d, %v), parseTempBranchless+validTemp = (%d, %d, %v)", field[:6], scalarV, scalarNext, scalarOK, wantV, wantNext, wantOK)
+			}
 			if wantOK {
 				accepted++
 				if gotV != wantV || gotNext != wantNext {
@@ -449,6 +453,17 @@ func referenceError(body string) error {
 func TestTheDefaultReadBufferIsTheSweptMinimum(t *testing.T) {
 	if defaultBufKiB != 1024 {
 		t.Fatalf("defaultBufKiB = %d, want 1024: E-24 measured 4 MiB +6.56%%, 2 MiB +4.44%% and 512 KiB +3.97%% against it, all disjoint", defaultBufKiB)
+	}
+}
+
+// TestTheDefaultParseFoldsTheCheckIntoTheWord pins E-25: reverting the default to the byte check costs the 4.97% of wall clock and 6.33% of user CPU that arm measured, disjoint, inside a 0.067% bracket.
+// It pins the DEFAULT rather than the function, because parseTempBranchless and validTemp both stay in the binary as the arm this was measured against.
+func TestTheDefaultParseFoldsTheCheckIntoTheWord(t *testing.T) {
+	if defaultParse != "word" {
+		t.Fatalf("defaultParse = %q, want \"word\": E-25 measured the byte check at 1.498 s and 1.499 s against 1.424 s, disjoint", defaultParse)
+	}
+	if pk, err := parseMode(defaultParse); err != nil || pk != parseWord {
+		t.Fatalf("parseMode(%q) = (%d, %v), want (parseWord, nil)", defaultParse, pk, err)
 	}
 }
 

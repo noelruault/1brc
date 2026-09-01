@@ -1,0 +1,47 @@
+# experiment 2026-09-01T212026Z
+hypothesis: queue item 16
+prediction: the unpredictable three-way switch on next plus four to six dependent byte loads leave the row loop; 5-12% off the wall, ceiling 18.2% of user CPU (E-21)
+file:     measurements-1b.txt   runs: 5   warmup: 1   cooldown: 20s
+commit:   bde92b1452c4571b7d5dfbd96b0f0ca715f11154
+go:       go version go1.27.0 darwin/arm64
+machine:  Apple M5 Pro, hw.ncpu 15, 24 GiB, 26.5.2 arm64
+hyperfine: hyperfine 1.20.0
+power:    'AC Power' 	100%; charged; 0:00 remaining present: true
+load:     23:20  up 1 day, 13:39, 22 users, load averages: 1.96 1.76 2.01
+
+$ incumbent: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+$ word: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -parse word > /dev/null
+$ incumbent-last: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+
+Benchmark 1: incumbent
+  Time (mean ± σ):      1.498 s ±  0.008 s    [User: 18.414 s, System: 1.536 s]
+  Range (min … max):    1.489 s …  1.510 s    5 runs
+ 
+Benchmark 2: word
+  Time (mean ± σ):      1.424 s ±  0.009 s    [User: 17.279 s, System: 1.539 s]
+  Range (min … max):    1.414 s …  1.438 s    5 runs
+ 
+Benchmark 3: incumbent-last
+  Time (mean ± σ):      1.499 s ±  0.007 s    [User: 18.479 s, System: 1.516 s]
+  Range (min … max):    1.493 s …  1.509 s    5 runs
+ 
+Summary
+  word ran
+    1.05 ± 0.01 times faster than incumbent
+    1.05 ± 0.01 times faster than incumbent-last
+
+== ledger row skeleton, paste into 07-experiment-ledger.md and write the verdict ==
+
+### E-NN — queue item 16
+
+- **Idea:** 
+- **Prediction:** the unpredictable three-way switch on next plus four to six dependent byte loads leave the row loop; 5-12% off the wall, ceiling 18.2% of user CPU (E-21)
+- **Measured, invocation 2026-09-01T212026Z (1b, 5 runs, one hyperfine invocation):**
+
+  | Command | Mean [s] | Min [s] | Max [s] | Relative |
+  |:---|---:|---:|---:|---:|
+  | `incumbent` | 1.498 ± 0.008 | 1.489 | 1.510 | 1.05 ± 0.01 |
+  | `word` | 1.424 ± 0.009 | 1.414 | 1.438 | 1.00 |
+  | `incumbent-last` | 1.499 ± 0.007 | 1.493 | 1.509 | 1.05 ± 0.01 |
+
+- **Verdict:** 

@@ -81,7 +81,7 @@ func aggregateFile(path string, cfg config) (map[string]*gen.Accumulator, error)
 	}
 	// A batch kernel always parses branchlessly and checks the format with validTemp, so pairing it with any other -parse would silently measure something other than what the flags say.
 	if kern != kernelRow && pk != parseBranchless {
-		return nil, fmt.Errorf("-kernel %s has no %s parse arm; use -kernel row with -parse %s", cfg.Kernel, cfg.Parse, cfg.Parse)
+		return nil, fmt.Errorf("-kernel %s has no %s parse arm; use -kernel row with -parse %s, or add -parse branchless", cfg.Kernel, cfg.Parse, cfg.Parse)
 	}
 
 	f, err := os.Open(path)

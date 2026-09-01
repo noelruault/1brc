@@ -26,7 +26,7 @@ func main() {
 	flag.StringVar(&cfg.Split, "split", "static", "work distribution: static | cursor (H1)")
 	flag.StringVar(&cfg.Table, "table", "combined", "table layout: combined | split (H5)")
 	flag.StringVar(&cfg.IO, "io", "pread", "reader: pread | mmap (H7)")
-	flag.StringVar(&cfg.Parse, "parse", "branchless", "temperature parse and format check: branchless | scalar (H3) | word (queue item 16)")
+	flag.StringVar(&cfg.Parse, "parse", defaultParse, "temperature parse and format check: branchless | scalar (H3) | word (E-25)")
 	flag.StringVar(&cfg.Kernel, "kernel", "row", "tokenizer: row | batch-swar | batch-neon (go-v2-kernels)")
 	flag.BoolVar(&cfg.Madvise, "madvise", false, "MADV_WILLNEED the whole mapping first (-io mmap only, H7's rescue)")
 	cpuprofile := flag.String("cpuprofile", "", "write a pprof CPU profile here (go-opt-round-2)")
@@ -64,6 +64,10 @@ func defaultWorkers() int { return runtime.NumCPU() * 4 / 3 }
 // defaultBufKiB is a measured minimum, not a round number: E-24 swept 512 KiB, 1 MiB, 2 MiB and 4 MiB in one bracketed invocation and 1 MiB won disjoint from all three, reproducing E-23's reversal of E-06 to 0.27%.
 // The whole gain is kernel-side — system time falls 25.1% while user CPU stays flat — so a change to the reader's syscall shape (double-buffering, io_uring-style batching) invalidates this number rather than inheriting it.
 const defaultBufKiB = 1024
+
+// defaultParse is the fused parse-and-check, kept on E-25's measurement: 1.424 s against 1.498 s and 1.499 s for the two bracket arms, disjoint, with user CPU 6.33% lower for byte-identical output.
+// It is the one arm on this board that removed CPU rather than parallel efficiency, and the compute floor it leaves, 1.152 s, is still above the 1.000 s target.
+const defaultParse = "word"
 
 func run(path string, cfg config, out io.Writer) error {
 	stations, err := aggregateFile(path, cfg)
