@@ -7,6 +7,8 @@ Files: measurements-100m.txt (1.4 GB) and measurements-1b.txt (13.8 GB); command
 
 Deltas are only ever taken WITHIN one hyperfine invocation. The three invocations below are separated by their own headings and the 1b default arm appears in two of them, 1.667 s and 1.717 s, which is the cross-invocation drift this rule exists for.
 
+[CORRECTED, C6] Necessary, not sufficient: E-16 ran eight IDENTICAL arms in one invocation and they rose monotonically from 1.660 s to 2.010 s (+21.08%), user CPU rising 16.65% for identical work. Invocation B below carries the same signature (user CPU 18.701 -> 21.419 s across its seven slots, +14.53%), so its deltas are slot-biased by about 0.0302 s per slot; E-18 prices each row. A 1b invocation must now sleep 20 s before every timed run and name the incumbent first AND last.
+
 ==============================================================================
 == INVOCATION A: every arm on the 100m file ==================================
 ==============================================================================

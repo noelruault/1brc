@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # One autoresearch experiment: N arms of the same binary, correctness-gated, timed in ONE hyperfine invocation, written to a dated file under 1brc/bench/ with a pre-filled ledger row.
+# One invocation is necessary and not sufficient (E-16, CORRECTIONS.md C6): without the cooldown below, eight IDENTICAL arms rank monotonically over 21%, so an arm's slot decides its verdict.
 # The rules it refuses to let you break are in 07-experiment-ledger.md's header.
 set -euo pipefail
 

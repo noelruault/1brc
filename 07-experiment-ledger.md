@@ -4,7 +4,7 @@ Append-only. One row per experiment, each with the idea, the prediction made BEF
 
 **Verdict vocabulary** (`PARKED.md`'s, plus the two that keep code): `KEEP` (the default now), `KILLED-on-numbers` (records the number AND the baseline it was measured against, because numbers move), `PARKED` (not disproved, no number yet), `SPLIT` (the answer depends on the input and both arms stay).
 
-**The measurement rule this ledger enforces**: a delta is only ever taken between two arms of the SAME hyperfine invocation, because the identical binary measured 1.667 s in one invocation and 1.717 s in another. Cross-invocation numbers are recorded and never subtracted.
+**The measurement rule this ledger enforces**: a delta is only ever taken between two arms of the SAME hyperfine invocation, because the identical binary measured 1.667 s in one invocation and 1.717 s in another. Cross-invocation numbers are recorded and never subtracted. **[CORRECTED, C6: necessary, not sufficient.** E-16 ran eight IDENTICAL arms in one invocation and they rose monotonically by 21.08%. A 1b invocation must also **sleep 20 s before every timed run** (`experiment.sh -c`, now the default there) and **name the incumbent first and last**, or its arms are ranked by their slots. Rows E-02 to E-08 predate the fix; E-18 prices what that did to them.**]**
 
 ## The loop this ledger runs — and where it came from
 
@@ -14,8 +14,8 @@ The primary sources are this repo's own prior art, because it has run this loop 
 
 **Four things transplant, and each one is a check in the harness.**
 
-- **A fixed experiment budget** — karpathy's is five minutes of training per attempt, which buys ~12 attempts an hour. Ours is one hyperfine invocation on the 1b file: N arms at five runs plus a warmup, so an N-arm experiment costs about `N × 6 × 1.75 s` of timing — 31.5 s for three arms — plus a per-arm correctness pass. That is the same trade for the same reason, and it lands on this ledger's binding rule for free, because all the arms are in one invocation.
-- **One edit surface.** karpathy's agent only edits `train.py`. Every hypothesis here has instead become a **flag on one binary** — `-split`, `-table`, `-io`, `-parse`, `-kernel` — which is `METHODOLOGY.md` §1.1's "add a pricing function; never replace the baseline" in the form this problem takes. The incumbent is arm 1 of every invocation, so `AUTORESEARCH.md`'s "reproduce the baseline before changing anything" happens inside the run rather than against a published number.
+- **A fixed experiment budget** — karpathy's is five minutes of training per attempt, which buys ~12 attempts an hour. Ours is one hyperfine invocation on the 1b file: N arms at five runs plus a warmup, so an N-arm experiment costs about `N × 6 × 1.75 s` of timing — 31.5 s for three arms — plus a per-arm correctness pass. **[CORRECTED, C6: the 20 s cooldown is now mandatory at 1b and it dominates the budget — `N × 6 × 21.75 s`, so 130 s for three arms and 17 minutes for eight. The incumbent also appears twice, first and last, so an N-knob experiment costs N+2 arms.]** That is the same trade for the same reason, and it lands on this ledger's binding rule for free, because all the arms are in one invocation.
+- **One edit surface.** karpathy's agent only edits `train.py`. Every hypothesis here has instead become a **flag on one binary** — `-split`, `-table`, `-io`, `-parse`, `-kernel` — which is `METHODOLOGY.md` §1.1's "add a pricing function; never replace the baseline" in the form this problem takes. The incumbent is arm 1 of every invocation, so `AUTORESEARCH.md`'s "reproduce the baseline before changing anything" happens inside the run rather than against a published number. **[CORRECTED, C6: arm 1 AND the last arm. Being first is the most flattered slot there is, so an incumbent measured only there is the one arm the invocation cannot judge.]**
 - **A predicted number before the run.** `07-method-what-worked.md`: "An investigation that predicts 5 KB and measures 21 KB has learned something; one that only measures has produced a number nobody can interpret." `experiment.sh -p` is mandatory and must contain a digit; a knob-turn with no mechanism is allowed only as `-p 'sweep: <why>'`, which is E-06's precedent and labels the row honestly.
 - **A clean negative is a result.** `AUTORESEARCH.md`: "If it does not: add the log entry anyway with the number that killed it." Three of the eleven rows here are `KILLED-on-numbers` and a fourth, E-03, is a `SPLIT` whose 413 half is killed; E-11 is a method rule extracted from E-10's kill, and E-09 from the seven arms that disagreed across two file sizes.
 
@@ -26,19 +26,23 @@ The primary sources are this repo's own prior art, because it has run this loop 
 
 One rule from `quantization/00-methodology.md` is already load-bearing here and needs no new machinery: piece-level and integration-level are **two different measurements**, and E-11 is what happens when a piece-level number is quoted as an integration-level one.
 
-## Where v1 stands
+## Where the binary stands
 
 | | measured | source |
 |---|---|---|
-| 1,000,000,000 rows | **1.742 s ± 0.019 s** (range 1.712-1.760, 5 runs) | [`bench/2026-09-01T152951Z-v1-parallel.txt`](bench/2026-09-01T152951Z-v1-parallel.txt) |
-| 100,000,000 rows | 161.0 ms ± 4.8 ms | same |
-| 10,000,000 rows | 27.8 ms ± 0.9 ms | same |
+| 1,000,000,000 rows, current default (20 workers) | **1.613 s ± 0.047 s** (range 1.568-1.659, 4 runs, 20 s cooldown) | [`bench/2026-09-01T164052Z-E-17-the-two-knobs-re-measured-with-a-20-s-cooldown-incumbent-at-both-ends.txt`](bench/2026-09-01T164052Z-E-17-the-two-knobs-re-measured-with-a-20-s-cooldown-incumbent-at-both-ends.txt) |
+| the same invocation's incumbent (15 workers), for the honest delta | 1.729 s and 1.773 s in slots 1 and 4, **−7.49% against the slot-2 interpolation** | same |
+| 1,000,000,000 rows, v1 as published by `go-v1-parallel` | 1.742 s ± 0.019 s, **no cooldown, so slot-biased in an unknown direction** | [`bench/2026-09-01T152951Z-v1-parallel.txt`](bench/2026-09-01T152951Z-v1-parallel.txt) |
+| 100,000,000 rows | 161.0 ms ± 4.8 ms (15 workers, not re-measured) | same |
+| 10,000,000 rows | 27.8 ms ± 0.9 ms (15 workers, not re-measured) | same |
 | the skeleton it replaces | 2.607 s at 100m and 260.5 ms at 10m, 26.1 ns/row | `bench/2026-09-01T125649Z-skeleton.txt` |
 | target | 1.000 s | `spec.md:5` |
 
-So v1 is **1.74× over target** and **16.2× faster than the skeleton at 100m** (2.607 s against 161.0 ms; 9.4× at 10m). PROVISIONAL: battery. Correctness gate green on both 10m files (413 and 10,000 stations) before every number above.
+So the binary is **1.61× over target**. PROVISIONAL: battery, and `spec.md:42` requires the headline on AC power. Correctness gate green on both 10m files (413 and 10,000 stations) before every number above, per arm.
 
-Derived, from the same run: 19.657 s of user CPU for 1.742 s of wall clock is **11.3 cores of 15 busy, 75% parallel efficiency**, and 19.7 ns of CPU per row. The I/O floor measured in `02-baseline.md` is 754 ms, so **43% of the current wall clock is the unavoidable read** and the compute above it is what the remaining rounds have to attack.
+**The 1.742 → 1.613 comparison is the weakest number in this table and it is kept only for continuity.** Those are two invocations under two different rules; E-13's incumbent moved 11.17% between invocations eight minutes apart with no code change at all. The delta that carries is the **7.49% inside invocation K**, against a bracket interpolated to the same slot.
+
+Derived, from the E-17 arm: 18.541 s of user CPU for 1.613 s of wall clock is **11.5 cores of 15 busy, 77% parallel efficiency**, and 18.5 ns of CPU per row. The I/O floor measured in `02-baseline.md` is 754 ms, so **47% of the current wall clock is the unavoidable read** and the compute above it is what the remaining rounds have to attack.
 
 ## Rows
 
@@ -82,21 +86,21 @@ Derived, from the same run: 19.657 s of user CPU for 1.742 s of wall clock is **
 - **Idea:** `automataIA/1brc-rs` uses one reusable 4 MiB buffer per worker; `02-baseline.md` only swept 1 MiB against 8 MiB, and benhoyt's Go entries use 1 MiB.
 - **Prediction:** none recorded before the run — this was a sweep, not a hypothesis, and it is labelled as such.
 - **Measured:** at 1b (invocation B) 4 MiB **1.667 s** beats 1 MiB **1.713 s** [1.700-1.720], disjoint, **2.8%**. At 100m (invocation A) 1 MiB **143.5 ms** [139.8-147.1] beats 4 MiB **152.9 ms**, disjoint, **6.1%** the other way.
-- **Verdict: KEEP 4 MiB** (the 1b answer is the one that counts). 8 MiB and 16 MiB are untried at 1b.
+- **Verdict: KEEP 4 MiB** (the 1b answer is the one that counts). **[CORRECTED, C6: NOT DEFENSIBLE — this arm sat in slot 5 of invocation B and E-18 derives −4.49% once the slot bias is subtracted, i.e. 1 MiB may win. Re-measure is queue item 15. 4 MiB stays the default because E-17 beat 8 MiB with the cooldown on, not because of this row.]** 16 MiB is measured in E-13 and loses.
 
 ### E-07 — table size: 1<<14 against 1<<17 buckets
 
 - **Idea:** `05-go-techniques.md` measured load factor mattering (8.5% on the 10k key set) and working-set size plausibly mattering the other way.
 - **Prediction:** 1<<14 might win on the 413 set, where 413 entries make load factor irrelevant and a 768 KiB array beats a 6.00 MiB one [CORRECTED, C4: published as 512 KiB against 4 MiB].
 - **Measured, invocation B (1b):** 1<<17 **1.667 s**, 1<<14 **1.787 s** [1.765-1.812]. The bigger table is **7.2% faster**, disjoint — against the prediction. At 100m the small table wins by 7.1%, disjoint. Another arm whose direction inverts with scale.
-- **Verdict: KEEP 1<<17.** The mechanism is not established. Hypothesis for a later round: with 15 shards live, more buckets means fewer probe collisions in *aggregate*, and the entry array's size stops mattering because only ~413 lines of it are ever hot.
+- **Verdict: KEEP 1<<17. [CORRECTED, C6: NOT DEFENSIBLE — slot 6 of invocation B, E-18 derives −1.86%; re-measure is queue item 15.]** The mechanism is not established. Hypothesis for a later round: with 15 shards live, more buckets means fewer probe collisions in *aggregate*, and the entry array's size stops mattering because only ~413 lines of it are ever hot.
 
 ### E-08 — `F_NOCACHE` against the page cache, end-to-end
 
 - **Idea:** `02-baseline.md` measured 15 uncached preads reading 13.8 GB in 754 ms against 1.126 s page-cached, because the file is 53.5% of RAM.
 - **Prediction:** the ordering survives once aggregation competes for the same bandwidth.
 - **Measured, invocation B (1b):** `F_NOCACHE` **1.667 s**, page-cached **1.759 s** [1.720-1.787], disjoint, **5.5%**. At 100m — 1.4 GB, comfortably resident — the page cache wins by 3.5%, disjoint.
-- **Verdict: KEEP `F_NOCACHE`.** `02-baseline.md`'s ordering is confirmed end-to-end at 1b and confirmed to invert at 100m, which is exactly the file-size-against-RAM mechanism it named.
+- **Verdict: KEEP `F_NOCACHE`. [CORRECTED, C6: NOT DEFENSIBLE at this margin — slot 7 of invocation B, the worst-biased slot in the study, and E-18 derives −5.35%, a sign change. The decision stands on `02-baseline.md`'s separate 754 ms against 1.126 s (49%), which no bias of this size explains; this row's 5.5% does not stand on its own. Re-measure is queue item 15.]** `02-baseline.md`'s ordering is confirmed end-to-end at 1b and confirmed to invert at 100m, which is exactly the file-size-against-RAM mechanism it named.
 
 ### E-09 — the meta-result: a 100m run does not rank a 1b run
 
@@ -164,6 +168,13 @@ Derived, from the same run: 19.657 s of user CPU for 1.742 s of wall clock is **
 - **Verdict, `-buf 8192`: KILLED-on-numbers.** Against its interpolated slot (1.7583 s) it is **3.05% SLOWER**, and its range overlaps `default.b`'s, so it is not even separated in the losing direction. E-13's +8.64% was the second slot of an uncorrected invocation. The 4 MiB default stands and the flag stays for reproduction. **Revive trigger:** a reader that is no longer one blocking `ReadAt` per worker (queue item 14's double buffer changes what a buffer size means).
 - **The new best measured wall clock is 1.613 s ± 0.047 s at 1,000,000,000 rows** — PROVISIONAL, measured on battery, `spec.md:42` requires the headline on AC power. It is 7.41% under the published v1 figure of 1.742 s, but those two numbers come from different invocations under different rules and **the honest comparison is the 7.49% inside invocation K**.
 
+### E-18 — what the slot bias does to invocation B, where six earlier verdicts came from
+
+- **Idea:** E-16 makes every uncorrected 1b invocation suspect, and six ledger rows (E-02, E-03, E-05, E-06, E-07, E-08) were all read off **one** invocation with the incumbent in slot 1. Before round 2 builds on them, price the bias.
+- **Measured (the evidence that invocation B has the same drift):** its user CPU rises monotonically with slot — **18.701, 18.979, 20.105, 19.979, 20.585, 20.705, 21.419 s, +14.53%** ([`07-experiment-ledger-data.txt`](07-experiment-ledger-data.txt) §invocation B) — against +16.65% in the null experiment and +0.69% with the cooldown on. That is the signature, in the raw data, of the same machine behaviour.
+- **DERIVED, not measured:** subtracting E-16's 0.0302 s per slot from each arm of invocation B gives `H1 cursor` **+19.18%** (raw +21.00), `H5 split` **+0.94%** (raw +4.56), `H3 scalar` **+5.96%** (raw +11.40), `buf 1M` **−4.49%** (raw +2.76), `bits 14` **−1.86%** (raw +7.20), `page cache` **−5.35%** (raw +5.52). Applying one invocation's drift constant to another is an extrapolation and it is labelled as one: E-16 measured 8 arms of 5 runs, invocation B ran 7 arms of 5 runs, and nothing establishes that the constant transfers.
+- **Verdict: three rows are NOT DEFENSIBLE and one kill nearly vanishes; no verdict is reversed here, because a derived correction cannot reverse a measurement.** E-02's kill of the shared cursor (+19.18%) and E-05's branchless parse (+5.96%) survive with smaller margins. E-03's split-table kill lands under 1% and is now indistinguishable from its incumbent. **E-06 (4 MiB buffer), E-07 (1<<17 buckets) and E-08 (`F_NOCACHE`) all sit inside the bias and two of them change sign under it** — they must be re-measured under the cooldown before anything is built on them, and that is now the top of the queue for `go-opt-round-2`. Independent support, and the reason this is a re-measure rather than a retraction: `02-baseline.md` measured `F_NOCACHE` against the page cache in a separate scan harness at 754 ms against 1.126 s, a 49% margin no slot bias of this size can explain, and E-17 has now re-measured 8 MiB against 4 MiB with the cooldown on and 4 MiB won.
+
 ## Hypothesis queue for `go-autoresearch-harness` and the optimization rounds
 
 Ordered by the size of the gap each could close. The gap to shut is **0.742 s**, of which at most **0.988 s** is compute (1.742 measured minus the 0.754 s read floor).
@@ -196,8 +207,9 @@ The two lists above hold the hypotheses and their reasoning. This is their **sta
 
 | # | hypothesis | state | what it takes |
 |---|---|---|---|
-| 6 | more workers than cores | **runnable now** | `-workers 20`, `-workers 30`; the cheapest experiment in the queue |
-| 7 | buffers above 4 MiB | **runnable now** | `-buf 8192`, `-buf 16384`; 4 MiB beat 1 MiB by 2.8% at 1b and the top of the range is untried |
+| 15 | re-measure invocation B's six rows with the cooldown on | **top of the queue, runnable now** | E-18: `-buf 1024`, `-bits 14`, `-nocache=false`, `-table split`, `-parse scalar`, `-split cursor` against a bracketed incumbent; three of those verdicts sit inside the slot bias and two change sign under it |
+| 6 | more workers than cores | **CLOSED — E-17, KEPT** | the default is now `NumCPU()*4/3`; 20 and 30 did not separate, so the optimum is a plateau |
+| 7 | buffers above 4 MiB | **CLOSED — E-17, KILLED-on-numbers** | 8 MiB is 3.05% slower slot-corrected; E-13's +8.64% was a slot artifact |
 | 11 | H-11, core-class-weighted split | needs a measurement, then code | measure `r` (the Super/Performance throughput ratio) on a resident buffer first — the prediction is a function of `r` and `r` is unmeasured |
 | 14 | H-14, double-buffer each worker | needs code | a fill-ahead goroutine per worker behind a flag; largest single-mechanism candidate, ceiling 25% |
 | 4 | the correctness tax, priced | needs code | a trusting arm that skips `validTemp` and the dual-needle scan; it must never become the default, only the price tag |
@@ -211,16 +223,15 @@ The two lists above hold the hypotheses and their reasoning. This is their **sta
 | 3 | the idle 25% of the cores | not an experiment | a profile, which is what `go-opt-round-2` is defined to be |
 | 2 | the batch tokenizer | **CLOSED — E-10, KILLED-on-numbers** | `-kernel batch-swar` and `-kernel batch-neon` stay for reproduction |
 
-The two runnable rows, verbatim:
+The runnable row, verbatim. It is item 15, and it costs eight arms: **the incumbent goes first AND last**, which is what makes the rest of the invocation readable (E-17), and the cooldown is now the default so it need not be passed.
 
 ```
-bash 1brc/scripts/experiment.sh -i 'queue item 6 - more workers than cores' \
-  -p 'if part of the idle 25% is read stall, oversubscription hides it: 3-8%' \
-  -a 'workers15=' -a 'workers20=-workers 20' -a 'workers30=-workers 30'
-
-bash 1brc/scripts/experiment.sh -i 'queue item 7 - buffers above 4 MiB' \
-  -p 'sweep: 4 MiB beat 1 MiB by 2.8% at 1b, 8 and 16 MiB untried at that scale' \
-  -a 'buf4M=' -a 'buf8M=-buf 8192' -a 'buf16M=-buf 16384'
+bash 1brc/scripts/experiment.sh -i 'queue item 15 - invocation B re-measured with the cooldown on' \
+  -p 'E-18 derives -4.49% for buf 1M, -1.86% for bits 14 and -5.35% for the page cache once the slot bias is subtracted; if that extrapolation holds, at least one of the three changes sign here' \
+  -a 'default.a=' -a 'buf1M=-buf 1024' -a 'bits14=-bits 14' -a 'pagecache=-nocache=false' \
+  -a 'split=-table split' -a 'scalar=-parse scalar' -a 'cursor=-split cursor' -a 'default.b='
 ```
+
+At 20 s of cooldown and 5 runs that invocation costs about **8 × 6 × 21.7 s = 17 minutes**, which is the price of the fix and is why item 15 is a round of its own rather than a line item. `1brc/scripts/bench.sh` has NOT been given the cooldown; it measures one command at a time, so it has no slots to bias, but a bench.sh number is still not comparable with an experiment.sh arm.
 
 **Item 8 is not the cheap unblocker three other items assume it is, and the reason is a design question, not a cost one.** Derived from the recorded size of `measurements-10k-stations-10m.txt` (570,941,611 B for 10,000,000 rows, `02-baseline-data.txt`): the 10k key set costs **57.09 bytes per row** against the official set's 13.80, because the synthetic names are longer. A *1-billion-row* 10k file is therefore **57.09 GB — 2.22× this machine's RAM**, where `measurements-1b.txt` is 53.5% of it, and its read floor alone is **3.12 s** at the 18.3 GB/s measured in `02-baseline.md`. Every arm would land three times over target before any compute, so nothing measured there could be compared with the 1.742 s headline. Holding **bytes** constant instead gives **241.6M rows** at 13.80 GB, which reproduces the memory regime the 1b file established and is the file items 9, 10 and 12 actually want. The round must pick one knob and say which; generating both is 79 s and 19 s of a generator that reproduces byte-for-byte from its seed, and 329 GB of disk is free.
