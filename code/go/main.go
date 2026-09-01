@@ -26,7 +26,7 @@ func main() {
 	flag.StringVar(&cfg.Split, "split", "static", "work distribution: static | cursor (H1)")
 	flag.StringVar(&cfg.Table, "table", "combined", "table layout: combined | split (H5)")
 	flag.StringVar(&cfg.IO, "io", "pread", "reader: pread | mmap (H7)")
-	flag.StringVar(&cfg.Parse, "parse", "branchless", "temperature parse: branchless | scalar (H3)")
+	flag.StringVar(&cfg.Parse, "parse", "branchless", "temperature parse and format check: branchless | scalar (H3) | word (queue item 16)")
 	flag.StringVar(&cfg.Kernel, "kernel", "row", "tokenizer: row | batch-swar | batch-neon (go-v2-kernels)")
 	flag.BoolVar(&cfg.Madvise, "madvise", false, "MADV_WILLNEED the whole mapping first (-io mmap only, H7's rescue)")
 	cpuprofile := flag.String("cpuprofile", "", "write a pprof CPU profile here (go-opt-round-2)")

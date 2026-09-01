@@ -94,7 +94,7 @@ func (t *table) merge(i int, v int32) {
 //
 // Every kernel here over-reads 8 bytes, so each stops early and foldTail's scalar path closes the rest without ever over-reading: that is what removes any need for padded buffers or a guard page.
 // The kernel is chosen ONCE per buffer, because a per-row switch would charge every arm for the comparison the batch arms exist to remove.
-func (t *table) fold(data []byte, k kernel, fastParse bool, base int64) error {
+func (t *table) fold(data []byte, k kernel, pk parseKind, base int64) error {
 	var (
 		pos int
 		err error
@@ -105,7 +105,7 @@ func (t *table) fold(data []byte, k kernel, fastParse bool, base int64) error {
 	case kernelBatchNEON:
 		pos, err = t.foldBatchNEON(data, base)
 	default:
-		pos, err = t.foldRows(data, fastParse, base)
+		pos, err = t.foldRows(data, pk, base)
 	}
 	if err != nil {
 		return err
@@ -114,7 +114,7 @@ func (t *table) fold(data []byte, k kernel, fastParse bool, base int64) error {
 }
 
 // foldRows is v1's per-row kernel: rescan from each row's first byte, one separator search and one parse per row.
-func (t *table) foldRows(data []byte, fastParse bool, base int64) (int, error) {
+func (t *table) foldRows(data []byte, pk parseKind, base int64) (int, error) {
 	pos := 0
 	for pos+maxRow <= len(data) {
 		sep, semi := indexDelim(data[pos:])
@@ -129,9 +129,16 @@ func (t *table) foldRows(data []byte, fastParse bool, base int64) (int, error) {
 			v    int32
 			next int
 		)
-		if fastParse {
+		// The incumbent is the FIRST test on purpose: it keeps paying the one loop-invariant compare it paid before this arm existed, and the new arm pays the extra one, so the bias runs against the hypothesis rather than for it.
+		if pk == parseBranchless {
 			v, next = parseTempBranchless(field)
 			if next == 0 || !validTemp(field, next) || !inRange(v) {
+				return 0, rowError(base+int64(pos), data[pos:])
+			}
+		} else if pk == parseWord {
+			var ok bool
+			v, next, ok = parseTempWord(field)
+			if !ok || !inRange(v) {
 				return 0, rowError(base+int64(pos), data[pos:])
 			}
 		} else {

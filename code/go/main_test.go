@@ -224,6 +224,59 @@ func TestBranchlessParseMatchesTheReference(t *testing.T) {
 	}
 }
 
+// TestParseTempWordAcceptsEveryLegalTemperature is the shape half of queue item 16: the word check must accept all 1,999 values the generator can write, with the same tenths and the same row end as the parse it folds in.
+func TestParseTempWordAcceptsEveryLegalTemperature(t *testing.T) {
+	for v := int(gen.MinTenths); v <= int(gen.MaxTenths); v++ {
+		field := string(gen.AppendTenths(nil, gen.Tenths(v))) + "\n"
+		padded := []byte(field + strings.Repeat("x", 16))
+		got, next, ok := parseTempWord(padded)
+		if !ok || int(got) != v || next != len(field) {
+			t.Fatalf("%q: parseTempWord = (%d, %d, %v), want (%d, %d, true)", field, got, next, ok, v, len(field))
+		}
+	}
+}
+
+// TestParseTempWordMatchesTheByteCheck is the differential test queue item 16 turns on: parseTempWord replaces parseTempBranchless plus validTemp, so it may not accept or reject a single field they would not.
+//
+// The sweep is exhaustive over 6-byte fields in the alphabet the shape is built from, so the adversarial cases are proved rather than spot-checked: a name carrying the separator ("b;1.0"), a three-digit temperature ("100.0"), a sign with no digit, a doubled dot, a truncated field and a field with no '\n' are all inside it, as are the two lanes above the row that neither check may read.
+// Both fillers must agree, which is what shows the over-read bytes change no verdict; the accepted count is pinned because a mutant that rejects everything passes every comparison in the loop.
+func TestParseTempWordMatchesTheByteCheck(t *testing.T) {
+	alphabet := []byte{'-', '0', '1', '9', '.', '\n', ';', ':', 0x00, 'b'}
+	field := make([]byte, 8)
+	checked, accepted := 0, 0
+	var sweep func(i int, filler byte)
+	sweep = func(i int, filler byte) {
+		if i == 6 {
+			field[6], field[7] = filler, filler
+			wantV, wantNext := parseTempBranchless(field)
+			wantOK := wantNext != 0 && validTemp(field, wantNext)
+			gotV, gotNext, gotOK := parseTempWord(field)
+			checked++
+			if gotOK != wantOK {
+				t.Fatalf("%q (filler %#02x): parseTempWord ok=%v, parseTempBranchless+validTemp ok=%v", field[:6], filler, gotOK, wantOK)
+			}
+			if wantOK {
+				accepted++
+				if gotV != wantV || gotNext != wantNext {
+					t.Fatalf("%q: parseTempWord = (%d, %d), parseTempBranchless = (%d, %d)", field[:6], gotV, gotNext, wantV, wantNext)
+				}
+			}
+			return
+		}
+		for _, c := range alphabet {
+			field[i] = c
+			sweep(i+1, filler)
+		}
+	}
+	for _, filler := range []byte{0xFF, 0x00} {
+		sweep(0, filler)
+	}
+	// 2 x 10^6 fields, of which 2 x 1287 are temperatures: 9 shapes of `D.D\n` x 100 free trailing bytes, 36 of `-D.D\n` and `DD.D\n` x 10, and 27 of `-DD.D\n`, over the 3 digits in the alphabet.
+	if checked != 2_000_000 || accepted != 2_574 {
+		t.Fatalf("swept %d fields and accepted %d, want 2000000 and 2574", checked, accepted)
+	}
+}
+
 // TestIndexDelimMatchesTheObviousScan covers the dual-needle SWAR scan at every length and offset around its 8-byte window, and specifically the case it exists for: a '\n' before the ';' must be reported as the first delimiter, not skipped.
 func TestIndexDelimMatchesTheObviousScan(t *testing.T) {
 	obvious := func(b []byte) (int, bool) {
@@ -273,27 +326,27 @@ func TestTableLayoutsAgree(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, split := range []bool{false, true} {
-		for _, fast := range []bool{false, true} {
+		for _, pk := range []parseKind{parseScalar, parseBranchless, parseWord} {
 			tab := newTable(9, split)
-			if err := tab.fold(data, kernelRow, fast, 0); err != nil {
-				t.Fatalf("split=%v fast=%v: %v", split, fast, err)
+			if err := tab.fold(data, kernelRow, pk, 0); err != nil {
+				t.Fatalf("split=%v parse=%d: %v", split, pk, err)
 			}
 			got := map[string]*gen.Accumulator{}
 			tab.drain(got)
 			if len(got) != len(want) {
-				t.Fatalf("split=%v fast=%v: %d stations, want %d", split, fast, len(got), len(want))
+				t.Fatalf("split=%v parse=%d: %d stations, want %d", split, pk, len(got), len(want))
 			}
 			// One BUCKET per station, not one per (station, temperature): the fast path hashes a whole word out of the row, so a hash that forgets to mask off the bytes at and above the separator still produces the right output through drain() while filling the table with a bucket per distinct temperature.
 			if tab.size != len(want) {
-				t.Fatalf("split=%v fast=%v: %d buckets used for %d stations", split, fast, tab.size, len(want))
+				t.Fatalf("split=%v parse=%d: %d buckets used for %d stations", split, pk, tab.size, len(want))
 			}
 			for name, w := range want {
 				g := got[name]
 				if g == nil {
-					t.Fatalf("split=%v fast=%v: %q missing", split, fast, name)
+					t.Fatalf("split=%v parse=%d: %q missing", split, pk, name)
 				}
 				if *g != *w {
-					t.Fatalf("split=%v fast=%v: %q got %+v want %+v", split, fast, name, *g, *w)
+					t.Fatalf("split=%v parse=%d: %q got %+v want %+v", split, pk, name, *g, *w)
 				}
 			}
 		}
@@ -315,7 +368,7 @@ func TestTableProbesPastAFullBucketRun(t *testing.T) {
 	for _, split := range []bool{false, true} {
 		// Eight bits is 256 buckets for 200 keys: a 78% load factor, where linear probing runs are long.
 		tab := newTable(8, split)
-		if err := tab.fold(data, kernelRow, true, 0); err != nil {
+		if err := tab.fold(data, kernelRow, parseBranchless, 0); err != nil {
 			t.Fatal(err)
 		}
 		got := map[string]*gen.Accumulator{}
@@ -334,7 +387,7 @@ func TestTableTooSmallErrorsInsteadOfHanging(t *testing.T) {
 	}
 	for _, split := range []bool{false, true} {
 		// Six bits is 64 buckets for 200 keys: it must fill and then fail.
-		err := newTable(6, split).fold(body.Bytes(), kernelRow, true, 0)
+		err := newTable(6, split).fold(body.Bytes(), kernelRow, parseBranchless, 0)
 		if err == nil {
 			t.Fatalf("split=%v: a 64-bucket table accepted 200 stations", split)
 		}

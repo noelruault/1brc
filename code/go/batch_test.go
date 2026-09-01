@@ -70,7 +70,7 @@ func TestBorrowChainMaskWouldBeWrongHere(t *testing.T) {
 func foldWith(t *testing.T, k kernel, data []byte) (map[string]*gen.Accumulator, int, error) {
 	t.Helper()
 	tab := newTable(12, false)
-	if err := tab.fold(data, k, true, 0); err != nil {
+	if err := tab.fold(data, k, parseBranchless, 0); err != nil {
 		return nil, 0, err
 	}
 	got := map[string]*gen.Accumulator{}

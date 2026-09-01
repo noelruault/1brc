@@ -66,6 +66,47 @@ func parseTempBranchless(b []byte) (tenths int32, next int) {
 	return int32((abs ^ signed) - signed), dot>>3 + 3
 }
 
+const (
+	digitHighNibbles = 0xF0F0F0F0F0F0F0F0
+	digitLowNibbles  = 0x0F0F0F0F0F0F0F0F
+	digitThrees      = 0x3030303030303030
+	digitSixes       = 0x0606060606060606
+	dotThenNewline   = uint64('.') | uint64('\n')<<16
+	dotNewlineMask   = uint64(0xFF) | uint64(0xFF)<<16
+)
+
+// nonDigitMask sets bits in the high nibble of every lane of w that is not an ASCII digit, and leaves every digit lane zero.
+//
+// The low-nibble add cannot carry into the next lane: masking to 0x0F first bounds each lane at 0x15, so the eight tests stay independent.
+// A lane is a digit exactly when its high nibble is 3 and its low nibble is under 10, which is why both halves are needed: 0x3A passes the first test and 0x2F the second.
+func nonDigitMask(w uint64) uint64 {
+	return (w^digitThrees)&digitHighNibbles | ((w&digitLowNibbles)+digitSixes)&digitHighNibbles
+}
+
+// parseTempWord is parseTempBranchless with validTemp's format rejection folded into the same 8-byte word, so the shape is established from bits already in a register instead of from four to six dependent byte compares behind an unpredictable three-way switch on next.
+//
+// It must accept and reject byte for byte what parseTempBranchless plus validTemp accept and reject, and TestParseTempWordMatchesTheByteCheck pins that over every 6-byte string in the alphabet the shape is built from.
+// The four rejections are ORed into one accumulator so no test can branch: the '.' and '\n' at their fixed offsets from the dot lane, the digit lanes, the sign byte when the parse read one, and the digit COUNT, which is the check that rejects "100.0" (three digits and no sign) and "-.5" (a sign and none).
+func parseTempWord(b []byte) (tenths int32, next int, ok bool) {
+	w := binary.LittleEndian.Uint64(b)
+	dot := bits.TrailingZeros64(^w & parseDotBits)
+	if dot > 28 {
+		return 0, 0, false
+	}
+	signed := int64(^w<<59) >> 63
+	digits := int64((w & ^uint64(signed&0xFF)) << (28 - dot) & parseDigitsHi)
+	abs := (digits * parseMagic >> 32) & 0x3FF
+
+	shift := uint(dot - 4)
+	neg := uint64(signed) & 1
+	bad := (w ^ dotThenNewline<<shift) & (dotNewlineMask << shift)
+	// The lane just under the dot and the lane at neg are the whole digit run for a run of one or two: at length one they are the same lane, at length two they are its ends.
+	bad |= nonDigitMask(w) & (uint64(0xF0)<<(shift+8) | uint64(0xF0)<<(shift-8) | uint64(0xF0)<<(8*neg))
+	bad |= (w ^ '-') & 0xFF & uint64(signed)
+	bad |= uint64(dot>>3-int(neg)-1) &^ 1
+	return int32((abs ^ signed) - signed), dot>>3 + 3, bad == 0
+}
+
 // parseTempScalar is the branchy alternative H3 left alive, and also the tail path: it never over-reads, so it is what closes a buffer's last rows.
 func parseTempScalar(b []byte) (tenths int32, next int, ok bool) {
 	i, neg := 0, false
