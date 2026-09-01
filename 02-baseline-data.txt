@@ -350,3 +350,22 @@ real 3.98
                          = 75% of the entire wall-clock budget just to iterate lines
   naive reference        39.8 ns/row single-threaded   ->  2.65 ns/row over 15 cores
                          = 2.65x over budget with PERFECT scaling and zero I/O cost
+
+## Benchmark confounds (spec.md:42)
+
+Captured in the same session as the measurements above, once, after the runs rather
+than sampled per run -- the amendment that requires this field landed mid-cycle. The
+power state did not change during the session.
+
+$ pmset -g batt | head -2
+Now drawing from 'Battery Power'
+ -InternalBattery-0 (id=23396451)	88%; discharging; 5:59 remaining present: true
+
+$ uptime
+14:59  up 1 day,  5:18, 19 users, load averages: 4.29 3.47 3.02
+
+  ON BATTERY, so every figure in 02-baseline.md is PROVISIONAL per spec.md:42. macOS
+  caps sustained CPU and SSD power on battery. The load average of 4.29 is this
+  session's own tooling, not a quiet machine. What should be trusted from this report
+  is the ORDERING of the I/O strategies and the order of magnitude of the floor, not
+  any single millisecond figure. The headline is re-measured on AC at final-dod.

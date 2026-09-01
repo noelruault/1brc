@@ -22,6 +22,10 @@ mkdir -p "$REPO/1brc/bench"
 stamp="$(date -u +%Y-%m-%dT%H%M%SZ)"
 out="$REPO/1brc/bench/$stamp-$LABEL.txt"
 
+# spec.md:42 makes power and load part of every recorded measurement, and numbers taken on battery are provisional.
+PROVISIONAL=""
+pmset -g batt | grep -q "AC Power" || PROVISIONAL="PROVISIONAL: measured on battery, spec.md:42 requires the headline on AC power"
+
 # The state the numbers belong to. A timing whose binary cannot be identified is not re-derivable.
 {
   echo "# bench $stamp"
@@ -31,6 +35,9 @@ out="$REPO/1brc/bench/$stamp-$LABEL.txt"
   echo "machine:  $(sysctl -n machdep.cpu.brand_string), hw.ncpu $(sysctl -n hw.ncpu), $(($(sysctl -n hw.memsize) / 1024 / 1024 / 1024)) GiB, $(sw_vers -productVersion) $(uname -m)"
   echo "hyperfine: $(hyperfine --version)"
   echo "files:    $FILES   runs: $RUNS   warmup: $WARMUP"
+  echo "power:    $(pmset -g batt | sed -n '1s/^Now drawing from //p') $(pmset -g batt | sed -n "2s/.*[)]\s*//p")"
+  echo "load:     $(uptime)"
+  echo "$PROVISIONAL"
   echo
 } > "$out"
 

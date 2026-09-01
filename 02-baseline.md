@@ -24,6 +24,8 @@ A purged-cache ("cold") number was not taken at all: `purge` needs sudo and this
 
 ## The floor
 
+**Every number in this report is PROVISIONAL.** `spec.md:42` requires the power source and load to be recorded with each measurement and labels battery numbers provisional; this session ran on battery (88%, discharging) at load average 4.29. macOS caps sustained CPU and SSD power on battery, so the true floor on AC is expected to be at or below these figures, and the *ordering* of the strategies is the load-bearing result rather than any single figure. The headline must be re-measured on AC before `final-dod` publishes it. Power and load are recorded in the data companion.
+
 | what | 1b wall clock | GB/s | ns/row |
 |---|---|---|---|
 | `read()` 1 MiB × 15 parallel readers, **uncached** | **754.4 ms ± 8.8 ms** | 18.29 | 0.754 |
@@ -42,7 +44,7 @@ All hyperfine rows are 5 runs after 1 warmup; the raw output is in the data comp
 
 **1. Uncached beats the page cache by 1.49x, and that inverts the usual advice.** 754 ms with `F_NOCACHE` against 1.126 s through the page cache, both at 1 MiB × parallel readers, both steady-state under hyperfine with σ under 10 ms. For a file larger than RAM the page-cache path pays to install and then evict 12.85 GiB of pages, and that bookkeeping costs more than it ever returns, because nothing is read twice. **Measured.** The actionable form: the fast path here is parallel `pread` with `F_NOCACHE`, not a warmed cache.
 
-**2. mmap is 5-9x slower than `read()`, and it is not simply a memory-pressure effect.** Best mmap number on 1b is 6.75 s against 853 ms for a page-cached read. The tempting explanation is that the file exceeds RAM — but the 137 MB file, which is entirely resident, still only reaches 17.25 GB/s under mmap against 59.20 GB/s for `read()`+count, and mmap scales just 1.15x from 1 to 8 workers where `read()` scales 3.6x. So the fault path itself is the bottleneck and it does not parallelise. With 16 KiB pages and 842,067 faults for the 1b file, that is where the time goes. **Measured.** This matters because mmap is the near-universal choice in the top 1BRC entries — all of them on Linux, most with huge pages available. Whatever we port from them, the I/O strategy is not portable.
+**2. mmap is 5-9x slower than `read()` on a scan, and it is not simply a memory-pressure effect.** (A scan result, so a prior and not a verdict — see the feasibility section.) Best mmap number on 1b is 6.75 s against 853 ms for a page-cached read. The tempting explanation is that the file exceeds RAM — but the 137 MB file, which is entirely resident, still only reaches 17.25 GB/s under mmap against 59.20 GB/s for `read()`+count, and mmap scales just 1.15x from 1 to 8 workers where `read()` scales 3.6x. So the fault path itself is the bottleneck and it does not parallelise. With 16 KiB pages and 842,067 faults for the 1b file, that is where the time goes. **Measured**, on a scan. This matters because mmap is the near-universal choice in the top 1BRC entries — all of them on Linux, most with huge pages available. Whatever we port from them, the I/O strategy does not port unexamined.
 
 There is a repeatable oddity inside the mmap numbers: **workers=4 is a pessimum**, 18.46 s and 18.00 s on two independent runs, worse than workers=1 (9.85 s) and 2.6x worse than workers=15 (6.90 s). It reproduces, so it is a property of the path, not noise. Its cause is not established — 4 concurrent fault streams defeating fault-ahead is a **hypothesis**, and one worth killing or confirming before anyone reaches for mmap again.
 
@@ -67,7 +69,12 @@ Two reference points for how far that is from where we stand. `bufio.Scanner` co
 
 Under 1.0 s is **not excluded** by this machine's physics: the bytes can be delivered in 754 ms, leaving 246 ms and ~13.9 ns/row of core time. It is also not comfortable — the I/O floor alone is 75% of the budget, so the parse must overlap the read almost perfectly, and any strategy that reads the file twice, or through the page cache, or through mmap, is over budget before it parses anything. **Derived.**
 
-The three constraints this hands to `go-skeleton` and `go-v1-parallel`: parallel `pread` with `F_NOCACHE` and 1 MiB buffers (8 MiB measured 1.39x *worse*), no mmap, and one pass with parse work fused into the read rather than staged behind it.
+What this hands to `go-v1-parallel` is a **starting point and three hypotheses, not a decision**. `spec.md:35` and `spec.md:37` are explicit that I/O strategy is a ledger question and that nothing is discarded on anything short of an end-to-end measurement, and every number on this page is a *scan* — read the bytes, maybe count newlines, do no aggregation. A scan is not a solution: once 15 shards are also writing into hash tables, they compete with the readers for the same memory bandwidth, and the ranking above can change. So:
+
+- **Start from** parallel `pread`, `F_NOCACHE`, 1 MiB buffers, 15 readers: the fastest scan measured here, 754.4 ms.
+- **H-io-1:** F_NOCACHE still beats the page cache end-to-end, with aggregation running. *Not yet measured.* The scan margin is 1.49x, which is large enough to expect it survives, and small enough that it might not.
+- **H-io-2:** mmap stays slower end-to-end. **mmap is NOT killed** — it lost a scan benchmark by 5-9x, which is a strong prior and not a discard. Its one plausible rescue is that a fault-driven reader may overlap aggregation differently than a `read()`-driven one, and `madvise(MADV_WILLNEED)` was never tried. It goes in the ledger as an alternative to measure, per `spec.md:50` item 6.
+- **H-io-3:** 1 MiB is at or near the optimum. Only 1 MiB and 8 MiB were measured (8 MiB is 1.39x worse); 64 KiB, 256 KiB and 4 MiB are unswept.
 
 ## Threads left open
 

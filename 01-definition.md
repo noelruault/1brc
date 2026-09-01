@@ -88,7 +88,7 @@ There is a second official generator, `CreateMeasurements3.java`, which synthesi
 
 ## Our target, restated for this machine
 
-Process 1,000,000,000 rows of `measurements-1b.txt` in **under 1.0 s wall clock**, warm page cache, on: Apple M5 Pro, 15 logical cores (`hw.perflevel0` "Super" ×5, `hw.perflevel1` "Performance" ×10), 24 GB RAM, macOS 26.5.2 / Darwin 25.5.0 arm64, go1.27.0. Exact `sysctl` output in the data companion.
+Process 1,000,000,000 rows of `measurements-1b.txt` in **under 1.0 s wall clock** under a named, reproducible storage state (see `CORRECTIONS.md` C2: this originally said "warm page cache", which `02-baseline.md` measured to be unreachable on this machine — the file is 53.5% of RAM — and *slower* than an uncached parallel read when it is approached at all), on: Apple M5 Pro, 15 logical cores (`hw.perflevel0` "Super" ×5, `hw.perflevel1` "Performance" ×10), 24 GB RAM, macOS 26.5.2 / Darwin 25.5.0 arm64, go1.27.0. Exact `sysctl` output in the data companion.
 
 Restated as a rate: the file is ~13.8 GB, so <1 s means **>13.8 GB/s of sustained parse throughput and ~1 ns per row across all cores**. Whether that is even reachable against this machine's memory bandwidth is the question `env-baseline` measures next; this report only fixes what "correct" and "done" mean.
 

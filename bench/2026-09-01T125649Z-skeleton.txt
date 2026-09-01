@@ -20,3 +20,11 @@ Benchmark 1: 1brc 100m
   Warning: Statistical outliers were detected. Consider re-running this benchmark on a quiet system without any interferences from other programs. It might help to use the '--warmup' or '--prepare' options.
  
 
+
+# Benchmark confounds (spec.md:42), appended after the run: the rule landed mid-cycle
+# and bench.sh did not yet capture these fields.
+$ pmset -g batt | head -1
+Now drawing from 'Battery Power'   (88%, discharging)
+$ uptime
+14:59  up 1 day,  5:18, 19 users, load averages: 4.29 3.47 3.02
+# ON BATTERY => these timings are PROVISIONAL.

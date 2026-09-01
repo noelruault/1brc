@@ -8,7 +8,7 @@ The corpus is the top five 1BRC entries (thomaswue, artsiomkorzun, jerrinot, roy
 
 Four things, and they are the same four in all five sources: **one pass over the bytes with no copies**, **work split into small segments handed out from a shared cursor**, **the whole line parsed by bit arithmetic rather than by scanning characters**, and **a purpose-built open-addressing hash table whose keys are compared 8 bytes at a time**. Nothing above that layer matters — no entry gets a win from a better algorithm, because there is no algorithm here beyond "read, tokenize, accumulate".
 
-Two of their four also carry a Java tax we simply do not pay: every one of the top ten uses `Unsafe` and eight of ten are AOT-compiled GraalVM native binaries, both to escape JVM overhead that Go does not have. thomaswue's most-copied trick — re-exec the process with `--worker` and pipe the child's stdout so the parent exits before the kernel charges it for unmapping 13.8 GB (`thomaswue.java:84-91`, adopted by royvanrijn at `royvanrijn.java:112`) — is a fix for a problem created by mmap, and `02-baseline.md` already ruled mmap out here on measured grounds.
+Two of their four also carry a Java tax we simply do not pay: every one of the top ten uses `Unsafe` and eight of ten are AOT-compiled GraalVM native binaries, both to escape JVM overhead that Go does not have. thomaswue's most-copied trick — re-exec the process with `--worker` and pipe the child's stdout so the parent exits before the kernel charges it for unmapping 13.8 GB (`thomaswue.java:84-91`, adopted by royvanrijn at `royvanrijn.java:112`) — is a fix for a problem created by mmap, which `02-baseline.md` measured losing badly here (on a scan; see H7).
 
 ## The one artifact worth more than the code
 
@@ -70,9 +70,9 @@ That is a real, unresolved question from a top-3 author, stated as a hypothesis.
 
 **Hypothesis H6:** on this chip, computing the mask by shift beats a 9-entry lookup table when the loop handles one line at a time, and loses when it interleaves 2+ lines. *Test:* `asm-kernels`, both variants × both loop shapes, four microbenchmarks. *Prediction:* jerrinot is right, and the crossover is visible because an L1 load is ~4 cycles against ~1 for a shift, unless the load latency is hidden.
 
-### 6. Techniques that do not survive the port
+### 6. Techniques that a first look says do not port
 
-- **mmap the whole file.** Universal in the corpus; measured 5-9x slower than `read()` here (`02-baseline.md`), and the fault path does not parallelise even when the data is fully resident. This is the largest single divergence between their design and ours.
+- **mmap the whole file.** Universal in the corpus; measured 5-9x slower than `read()` here on a scan (`02-baseline.md`), with a fault path that does not parallelise even when the data is fully resident. It is **not killed** — `spec.md:37` requires an end-to-end measurement before anything is discarded, and every baseline number is a scan. It carries forward as H7 rather than as a dead end, and it is the largest open divergence between their design and ours.
 - **Re-exec to dodge slow unmap** (`thomaswue.java:84-91`). A consequence of mmap plus JVM teardown. With `pread` there is nothing to unmap; Go's `os.Exit` already skips finalizers.
 - **`Unsafe` and GraalVM native images.** Solving JVM problems. Go's equivalent question — how far `unsafe.Pointer` and bounds-check elimination get us — is `go-recon`'s, and it starts from a compiled binary rather than working towards one.
 - **gigatoken.** Its public README documents throughput only: 24.53 GB/s tokenizing on two 72-core EPYCs, i.e. 0.17 GB/s per core against the 1.22 GB/s per core our own read floor measured. Different work, and no technique is recoverable from it; `src/lib.rs:1` shows `#![feature(portable_simd)]`, so its kernels are compare-and-bitmask in the same family as the NEON idiom above, and the module sources were not fetchable. It contributes a scale reference and nothing to port. Recorded so nobody re-reads it expecting more.
@@ -89,8 +89,9 @@ Six hypotheses, each with a test and a prediction, ordered by what they gate rat
 | H1 | shared-cursor 2 MiB segments beat a static split by ≥5% on this asymmetric chip | both, behind one flag, hyperfine | `go-v1-parallel` work distribution |
 | H5 | splitting the hash array from the entry array is worth ≥10% on 10k stations, ≈0% on 413 | both layouts × both files | table layout |
 | H6 | shift-computed masks beat lookup tables one-line-at-a-time, and lose when interleaved | 2 variants × 2 loop shapes | inner-loop structure |
+| H7 | mmap stays slower than parallel `pread` once aggregation runs, not just on a scan | both readers end-to-end on 1b, plus one `madvise(MADV_WILLNEED)` attempt | whether the corpus's I/O strategy is usable at all |
 
-`asm-kernels` owns H2, H3 and H6; `go-v1-parallel` owns H1, H4 and H5. H4 should be answered first regardless of which ticket does it, because it is free and everything else is drawn around its answer.
+`asm-kernels` owns H2, H3 and H6; `go-v1-parallel` owns H1, H4, H5 and H7. H4 should be answered first regardless of which ticket does it, because it is free and everything else is drawn around its answer.
 
 ## Threads left open
 

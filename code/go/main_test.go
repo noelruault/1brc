@@ -50,6 +50,9 @@ func TestRunMatchesTheReferenceByteForByte(t *testing.T) {
 func TestAggregateRejectsWhatTheReferenceRejects(t *testing.T) {
 	for _, tc := range []struct{ name, body string }{
 		{"no separator", "Hamburg 12.0\n"},
+		// Pins the separator rule itself: with the FIRST ';' the temperature is "b;1.0" and both
+		// implementations reject the line, with the LAST ';' it parses as 1.0 and they diverge.
+		{"separator inside the name", "a;b;1.0\n"},
 		{"empty temperature", "Hamburg;\n"},
 		{"not one decimal", "Hamburg;12\n"},
 		{"two decimals", "Hamburg;12.00\n"},
