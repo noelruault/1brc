@@ -104,6 +104,34 @@ func TestEveryRangeBoundaryIsFoldedExactlyOnce(t *testing.T) {
 	}
 }
 
+// TestARangeShorterThanARowOwnsNothing covers the degenerate end of the split: with more workers than rows, a range can contain no row start at all, and a range that folds "its" first row anyway counts a row that belongs to a later range.
+func TestARangeShorterThanARowOwnsNothing(t *testing.T) {
+	var body bytes.Buffer
+	for i := range 10 {
+		fmt.Fprintf(&body, "station-%d;%d.%d\n", i, i, i)
+	}
+	path := writeFile(t, body.String())
+	want := referenceOutput(t, body.String())
+	for _, workers := range []int{11, 40, 200, 1000} {
+		for _, split := range []string{"static", "cursor"} {
+			for _, io := range []string{"pread", "mmap"} {
+				cfg := defaults()
+				cfg.Workers, cfg.Split, cfg.IO, cfg.BufKiB, cfg.SegKiB = workers, split, io, 1, 1
+				name := fmt.Sprintf("%s/%s/workers=%d", split, io, workers)
+				t.Run(name, func(t *testing.T) {
+					var got bytes.Buffer
+					if err := run(path, cfg, &got); err != nil {
+						t.Fatal(err)
+					}
+					if got.String() != want {
+						t.Fatalf("%s:\n got: %s\nwant: %s", name, got.String(), want)
+					}
+				})
+			}
+		}
+	}
+}
+
 // TestFoldRejectsWhatTheReferenceRejects guards the divergence that byte-comparing clean data cannot catch: a fast implementation that silently accepts a malformed or out-of-range line would pass the 10m gate and be wrong on any file that has one.
 //
 // Each case runs TWICE: alone, where the row is inside the scalar tail, and followed by enough valid rows to push it into the branchless fast path. A check that only exists on one of the two paths is the bug this catches.
@@ -247,6 +275,10 @@ func TestTableLayoutsAgree(t *testing.T) {
 			tab.drain(got)
 			if len(got) != len(want) {
 				t.Fatalf("split=%v fast=%v: %d stations, want %d", split, fast, len(got), len(want))
+			}
+			// One BUCKET per station, not one per (station, temperature): the fast path hashes a whole word out of the row, so a hash that forgets to mask off the bytes at and above the separator still produces the right output through drain() while filling the table with a bucket per distinct temperature.
+			if tab.size != len(want) {
+				t.Fatalf("split=%v fast=%v: %d buckets used for %d stations", split, fast, tab.size, len(want))
 			}
 			for name, w := range want {
 				g := got[name]

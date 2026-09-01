@@ -13,10 +13,10 @@ Append-only. One row per experiment, each with the idea, the prediction made BEF
 | 1,000,000,000 rows | **1.742 s ± 0.019 s** (range 1.712-1.760, 5 runs) | [`bench/2026-09-01T152951Z-v1-parallel.txt`](bench/2026-09-01T152951Z-v1-parallel.txt) |
 | 100,000,000 rows | 161.0 ms ± 4.8 ms | same |
 | 10,000,000 rows | 27.8 ms ± 0.9 ms | same |
-| the skeleton it replaces | 2.607 s at 100m, 26.1 ns/row | `bench/2026-09-01T125649Z-skeleton.txt` |
+| the skeleton it replaces | 2.607 s at 100m and 260.5 ms at 10m, 26.1 ns/row | `bench/2026-09-01T125649Z-skeleton.txt` |
 | target | 1.000 s | `spec.md:5` |
 
-So v1 is **1.74× over target** and **15.0× faster than the skeleton at 100m**. PROVISIONAL: battery. Correctness gate green on both 10m files (413 and 10,000 stations) before every number above.
+So v1 is **1.74× over target** and **16.2× faster than the skeleton at 100m** (2.607 s against 161.0 ms; 9.4× at 10m). PROVISIONAL: battery. Correctness gate green on both 10m files (413 and 10,000 stations) before every number above.
 
 Derived, from the same run: 19.657 s of user CPU for 1.742 s of wall clock is **11.3 cores of 15 busy, 75% parallel efficiency**, and 19.7 ns of CPU per row. The I/O floor measured in `02-baseline.md` is 754 ms, so **43% of the current wall clock is the unavoidable read** and the compute above it is what the remaining rounds have to attack.
 
@@ -47,15 +47,15 @@ Derived, from the same run: 19.657 s of user CPU for 1.742 s of wall clock is **
 
 - **Idea:** the universal choice in the public 1BRC corpus — map 13.8 GB and let the page-fault path do the reading.
 - **Prediction** (H7, written after `02-baseline.md` measured mmap losing 5-9× on a *scan*): parallel `pread` stays ahead once aggregation runs too, and `madvise(MADV_WILLNEED)` is the rescue that might change it.
-- **Measured, invocation C (1b, own anchor):** anchor `pread` **1.717 s** [1.687-1.759], mmap **9.693 s** [9.619-9.827], mmap **+ `MADV_WILLNEED` 10.782 s** [10.702-10.893]. mmap is **5.6× slower** and the named rescue makes it **11% worse still**. System time tells the story: 18.4 s for mmap against 2.3 s for `pread`. At 100m — a 1.4 GB file that fits in RAM — mmap is *marginally faster* than `pread` (151.2 ms against 152.9 ms, overlapping) and `madvise` is already 18% worse.
+- **Measured, invocation C (1b, own anchor):** anchor `pread` **1.717 s** [1.687-1.759], mmap **9.693 s** [9.619-9.827], mmap **+ `MADV_WILLNEED` 10.782 s** [10.702-10.893]. mmap is **5.6× slower** and the named rescue makes it **11% worse still**. System time tells the story: 18.4 s for mmap against 2.3 s for `pread`. At 100m — a 1.4 GB file that fits in RAM — mmap is *marginally faster* than `pread` (151.2 ms against 152.9 ms, overlapping) and `madvise` is already 18% worse than the default arm (19.6% worse than mmap without it).
 - **Verdict: KILLED-on-numbers** against `pread`-at-1b = 1.717 s in invocation C. This is the largest divergence between the public corpus's design and ours, and it is now measured end-to-end rather than on a scan, which is what `spec.md:37` required before anything could be discarded. macOS's 16 KiB pages mean ~842k faults on a path that does not parallelise. **Revive trigger:** a machine with a different page size or a `MAP_POPULATE`-equivalent; `madvise` was the rescue and it is spent.
 
 ### E-05 — the branchless temperature parse against a branchy scalar one (H3)
 
 - **Idea:** merykitty's magic-multiply parse, no data-dependent branch.
 - **Prediction** (`04-asm-kernels.md`, H3 SPLIT): the winner is set by branch predictability, so only the real 15-shard loop settles it. The microbenchmark had the branchless parse **15.2% SLOWER** than scalar on the 413 corpus.
-- **Measured, invocation B (1b):** branchless **1.667 s** [1.643-1.685], scalar **1.857 s** [1.760-2.202]. Branchless is **11.4% faster**, and the scalar arm is by far the noisiest in the invocation (σ 0.193 s against 0.017 s). At 100m the ordering **inverts**: scalar 146.4 ms [143.5-149.7] beats branchless 152.9 ms [150.9-155.5], disjoint.
-- **Verdict: KEEP branchless as the default, and the FLAG STAYS.** H3's "it depends on the input" is confirmed and sharpened: it depends on the *scale* too, on the same input. The microbenchmark ranked it backwards, and so did the 100m end-to-end run. Note the branchless arm carries a validation tax the scalar arm does not (`kernel.go:validTemp`, six byte compares, needed because the branchless parse cannot reject a malformed field), so its 11.4% win is measured *including* that handicap.
+- **Measured, invocation B (1b):** branchless **1.667 s** [1.643-1.685], scalar **1.857 s** [1.760-2.202]. The scalar arm costs **11.4% more** than the branchless default it replaces, and the scalar arm is by far the noisiest in the invocation (σ 0.193 s against 0.017 s). At 100m the ordering **inverts**: scalar 146.4 ms [143.5-149.7] beats branchless 152.9 ms [150.9-155.5], disjoint.
+- **Verdict: KEEP branchless as the default, and the FLAG STAYS.** H3's "it depends on the input" is confirmed and sharpened: it depends on the *scale* too, on the same input. The microbenchmark ranked it backwards, and so did the 100m end-to-end run. Note the branchless arm carries a validation tax the scalar arm does not (`kernel.go:validTemp`, six byte compares, needed because the branchless parse cannot reject a malformed field), so the 11.4% is measured *including* that handicap.
 
 ### E-06 — per-worker read buffer: 1 MiB against 4 MiB
 
@@ -91,10 +91,10 @@ Ordered by the size of the gap each could close. The gap to shut is **0.742 s**,
 1. **Fuse the name hash into the separator scan** (benhoyt r10's shape, `05-go-techniques.md`): the SWAR scan currently skips 8 bytes at a time and the hash then re-loads the first word. Unmeasured. Prediction: small, because the hash already reads only one word.
 2. **The batch tokenizer** (`04-asm-kernels.md`'s biggest win, −40.4%/−40.7% on the official key set against staged SWAR): a whole-buffer dual-needle kernel emitting a token stream, drained into the table. This is the single most load-bearing untested assumption in the study, and `go-v2-kernels` owns it. The measured 1.93 ns Plan 9 call cost (`05-go-techniques.md`) says it must be called once per buffer, never per row.
 3. **The 25% of the cores that are idle.** 11.3 of 15 busy. Nothing here measures whether that is I/O wait, the merge, or shard skew. A profile (`sample`, or `xctrace --template 'CPU Counters'`) refills this queue better than a guess; `go-opt-round-2` is defined as profile-driven for this reason.
-4. **The correctness tax, measured rather than assumed.** The dual-needle scan (five extra integer ops per word) and `validTemp` (six byte compares per row) exist so this binary rejects exactly what the reference rejects. Neither has been priced against a trusting variant. Prediction: 3-8% of compute; if it is more, the shape of the check should change, not the contract.
+4. **The correctness tax, measured rather than assumed.** The dual-needle scan (four more integer ops per word, counted from the expression, not measured) and `validTemp` (four to six byte compares per row) exist so this binary rejects exactly what the reference rejects. Neither has been priced against a trusting variant. Prediction: 3-8% of compute; if it is more, the shape of the check should change, not the contract.
 5. **`unsafe.Add` pointer walks** in the fold loop: measured ceiling 4-16% on the scan in isolation (`05-go-techniques.md`), with the resliced-versus-unsafe gap there still unexplained.
 6. **More workers than cores** (`-workers 20`, `-workers 30`): if part of the idle 25% is I/O wait, oversubscription hides it. Untried, and the cheapest experiment left.
 7. **Buffer sizes above 4 MiB** at 1b: 8 and 16 MiB untried at the scale where 4 beat 1.
 8. **A 1b 10,000-station file** to settle E-03's parked half and `05-go-techniques.md`'s working-set hypothesis. ~20 s of generation.
-9. **Go's runtime map for the 10k case**: measured 3.5% FASTER than the best open-addressing arm on 10k names single-threaded (`05-go-techniques.md`). Never tested end-to-end, and would need item 8 first.
+9. **Go's runtime map for the 10k case**: measured 3.7% FASTER than the best open-addressing arm on 10k names single-threaded (`05-go-techniques.md`). Never tested end-to-end, and would need item 8 first.
 10. **The merge and the output.** 10,000 stations means 10,000 `map` inserts per shard at drain time and a sort; at 413 stations it is invisible, at 10k it may not be. Unmeasured.

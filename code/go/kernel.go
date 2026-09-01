@@ -24,7 +24,7 @@ const (
 // indexDelim finds the first ';' or '\n' eight bytes at a time and reports which one it found.
 //
 // A borrow chain can set a lane's high bit ABOVE a match but never below one, so the lowest set bit is always the first match.
-// Both needles are scanned, not just ';', because a row with no separator would otherwise have its name run into the NEXT row and be folded as a station that does not exist: the reference rejects that row, so this has to as well. It costs five integer ops per word and is the price of agreeing with the reference on malformed input.
+// Both needles are scanned, not just ';', because a row with no separator would otherwise have its name run into the NEXT row and be folded as a station that does not exist: the reference rejects that row, so this has to as well. It costs four more integer ops per word and is the price of agreeing with the reference on malformed input.
 func indexDelim(b []byte) (idx int, semi bool) {
 	i := 0
 	for ; i+8 <= len(b); i += 8 {

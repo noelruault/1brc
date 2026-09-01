@@ -224,6 +224,10 @@ func foldRange(f *os.File, t *table, lo, hi, size int64, buf []byte, fastParse b
 				return fmt.Errorf("byte %d: no row boundary in %d bytes", base, avail)
 			}
 			from = nl + 1
+			// A range shorter than one row contains no row START, so it owns nothing: without this it would fold the next range's first row and that row would be counted twice.
+			if base+int64(from) >= hi {
+				return nil
+			}
 		}
 		first = false
 
@@ -255,6 +259,9 @@ func foldMapped(t *table, data []byte, lo, hi int64, fastParse bool) error {
 			return fmt.Errorf("byte %d: no row boundary within %d bytes", lo, maxRow)
 		}
 		from = int(back) + nl + 1
+		if int64(from) >= hi {
+			return nil
+		}
 	}
 	end, ok := rangeEnd(data, 0, hi, from)
 	if !ok {

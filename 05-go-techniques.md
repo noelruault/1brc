@@ -4,6 +4,8 @@ Every number, the exact commands, the fetch hashes and the full ten-run output: 
 
 Two results are the reason this report exists, and both go against what the corpus does.
 
+Every percentage below is relative to the arm being REPLACED, so a negative number is what the change saves and a positive one is what it costs. `07-experiment-ledger.md` uses the same convention with the default configuration as the baseline.
+
 ## The corpus, and how it was chosen rather than recalled
 
 The Go entries were picked by a recorded query — `api.github.com/search/repositories?q=1brc+language:Go&sort=stars` — not from memory, and the result is in the data companion. Three sources were read for TECHNIQUE only, per `spec.md:39`; none of their code is in this repo.
@@ -34,7 +36,7 @@ Four table shapes behind one identical scan, so the delta between any two is the
 
 **Measured, 413 stations:** the prefix-hashed table beats Go's map by **15.8%** and beats full-name FNV by **10.1%**. Every pair is disjoint over its ten runs — the winner's slowest beats the loser's fastest — except the two bucket counts, which overlap and are therefore the same. Against the no-table floor, the table is **4.2 ns/row of the 17.5**, so it is the largest single component of the hot loop after the scan itself.
 
-**Measured, 10k stress case, and this is the result that overturns the plan:** Go's map **wins**, by 3.5% against the best open-addressing variant (disjoint), and full-name FNV is **2.44× slower** than everything else. Two separate mechanisms, one measured and one hypothesised:
+**Measured, 10k stress case, and this is the result that overturns the plan:** Go's map **wins** by 3.7% (disjoint) against the best open-addressing variant, and full-name FNV is **2.44× slower** than everything else. Two separate mechanisms, one measured and one hypothesised:
 
 1. FNV walks every byte of the key, and these names average 51.1 bytes, so it pays ~51 multiplies per row where the prefix hash pays one. That is arithmetic, not cache behaviour, and it kills full-key hashing for any key set with long names. **Measured.**
 2. Between the two prefix-hashed variants, going from 1<<14 to 1<<17 buckets is worth **8.5%** on the 10k set (disjoint) and **nothing** on the 413 set (overlapping ranges). 10,000 entries in 16,384 buckets is a 61% load factor, where linear probing degrades; in 131,072 buckets it is 7.6%, where it does not. That is the confound this report nearly published as "open addressing loses on long names" — it is worth 8.5% of the 13% gap. **Measured.**
@@ -103,7 +105,7 @@ Every bullet after the first is a **projection across benchmark shapes**, which 
 | I/O | 15 goroutines, disjoint ranges, `pread` with `F_NOCACHE`, reusable per-worker buffer | measured winner in `02-baseline.md`; independently the shape `automataIA/1brc-rs`'s safe variant uses |
 | buffer size | try 4 MiB alongside 1 MiB | their choice; our sweep only covered 1 and 8 MiB |
 | table | per-shard open addressing, 8-byte prefix hash, full `bytes.Equal` compare, ≤10% load factor | measured −15.8% against a Go map on 413; H4 says 8 bytes leave one collision in 413 |
-| 10k fallback | keep the Go map reachable by flag | measured: it WINS by 3.5% on 10k stations |
+| 10k fallback | keep the Go map reachable by flag | measured: it WINS by 3.7% on 10k stations |
 | table layout | H5's split hash/entry arrays, now with a predicted mechanism (4 MiB probed array → 1 MiB) | hypothesis; the 10k gap is the evidence it is worth trying |
 | `unsafe` | not in v1 | measured ceiling 4-16% on the scan only; reslicing gets half of it in safe Go |
 | GC | preallocate, then verify `NumGC` stays flat end-to-end | measured zero collections at probe scale |
