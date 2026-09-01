@@ -1,0 +1,277 @@
+# 03-technique-recon — raw data
+#
+# Sources, the commands that fetched them, and the output of every probe run to
+# verify a technique before the report states it works.
+
+## Sources
+
+Upstream repo: https://github.com/gunnarmorling/1brc
+  commit db064194be375edc02d6dbcd21268ad40f7e2869, committed 2024-04-10T12:20:33Z
+  fetched 2026-09-01T12:43:30Z  (the same commit 01-definition.md cites)
+
+$ B=https://raw.githubusercontent.com/gunnarmorling/1brc/main/src/main/java/dev/morling/onebrc
+$ for n in thomaswue artsiomkorzun jerrinot royvanrijn merykitty; do curl -sfL -o $n.java $B/CalculateAverage_$n.java; done
+thomaswue.java     18415 bytes
+artsiomkorzun.java 20309 bytes
+jerrinot.java      30224 bytes
+royvanrijn.java    21791 bytes
+merykitty.java     14566 bytes
+
+$ curl -sfL -o README.md https://raw.githubusercontent.com/gunnarmorling/1brc/main/README.md
+README.md          89211 bytes
+
+$ curl -sfL -o gigatoken.md https://raw.githubusercontent.com/marcelroed/gigatoken/main/README.md
+gigatoken.md       14798 bytes
+$ curl -sfL -o gigatoken-lib.rs https://raw.githubusercontent.com/marcelroed/gigatoken/main/src/lib.rs
+gigatoken-lib.rs   570 lines
+
+  gigatoken's src/pretokenize.rs and src/input.rs are directories (Rust modules), so
+  the raw-file fetch returns 404 and their contents were not read. Nothing in this
+  report rests on them.
+
+## Leaderboard, top of the table (README.md:57-59)
+
+THEIR MACHINE, NOT OURS: the official eval ran on a 32-core AMD EPYC 7502P limited
+to 8 cores, 128 GB RAM, file in the page cache. These are facts about that box.
+Per spec.md:34 they are never compared against our wall clock.
+
+  1  00:01.535  thomaswue / merykitty / mukel   21.0.2-graal, GraalVM native, Unsafe
+  2  00:01.587  artsiomkorzun                   21.0.2-graal, GraalVM native, Unsafe
+  3  00:01.608  jerrinot                        21.0.2-graal, GraalVM native, Unsafe
+     00:01.880  serkan_ozal                     21.0.1-open, Unsafe
+     00:01.921  abeobk                          21.0.2-graal, GraalVM native, Unsafe
+     00:02.018  stephenvonworley                21.0.2-graal, GraalVM native, Unsafe
+     00:02.157  royvanrijn                      21.0.2-graal, GraalVM native, Unsafe
+     00:02.319  yavuztas                        21.0.2-graal, GraalVM native, Unsafe
+     00:02.332  mtopolnik                       21.0.2-graal, GraalVM native, Unsafe
+     00:02.367  merykittyunsafe                 21.0.1-open, Unsafe
+
+  Every one of the top ten uses Unsafe; eight of ten are AOT-compiled GraalVM native
+  binaries. Both notes are about escaping the JVM, which is not a problem Go has.
+
+## royvanrijn's optimization diary, verbatim (royvanrijn.java:35-60)
+
+The single most useful artifact in the whole corpus: an ordered list of MEASURED wins
+on the author's own machine, which is a prior on what pays and roughly how much.
+
+  Initial submission:               62000 ms
+  Chunked reader:                   16000 ms
+  Optimized parser:                 13000 ms
+  Branchless methods:               11000 ms
+  Adding memory mapped files:        6500 ms (based on bjhara's submission)
+  Skipping string creation:          4700 ms
+  Custom hashmap...                  4200 ms
+  Added SWAR token checks:           3900 ms
+  Skipped String creation:           3500 ms (idea from kgonia)
+  Improved String skip:              3250 ms
+  Segmenting files:                  3150 ms (based on spullara's code)
+  Not using SWAR for EOL:            2850 ms
+  Inlining hash calculation:         2450 ms
+  Replacing branchless code:         2200 ms (sometimes we need to kill the things we love)
+  Added unsafe memory access:        1900 ms (keeping the long[] small and local)
+  Fixed bug, UNSAFE bytes String:    1850 ms
+  Separate hash from entries:        1550 ms
+  Various tweaks for Linux/cache     1550 ms
+  Improved layout/predictability:    1400 ms
+  Delayed String creation again:     1350 ms
+  Remove writing to buffer:          1335 ms
+  Optimized collecting at the end:   1310 ms
+  Changed to flyweight byte[]:       1290 ms
+  More LOC now parallel:             1260 ms
+
+  Two entries in that list are counter-intuitive and worth carrying forward as
+  warnings rather than techniques: "Not using SWAR for EOL" (2850 from 3150) and
+  "Replacing branchless code" (2200 from 2450). Both are cases where the clever
+  version lost. Neither is explained.
+
+## Technique sites, cited
+
+Segment size and a shared cursor:
+  thomaswue.java:46      SEGMENT_SIZE = 1 << 21          (2 MiB)
+  thomaswue.java:57-59   one global mmap, AtomicLong cursor over it
+  thomaswue.java:63-77   one thread per availableProcessors(), all pulling from the cursor
+  artsiomkorzun.java:37  SEGMENT_SIZE = 2 * 1024 * 1024  (2 MiB)
+  jerrinot.java:62       SEGMENT_SIZE = 4 * 1024 * 1024  (4 MiB)
+  jerrinot.java:420      startingPtr = globalCursor.addAndGet(SEGMENT_SIZE) - SEGMENT_SIZE
+  royvanrijn.java:82     "Twice the processors, smoothens things out."
+  royvanrijn.java:179    "Can we implement work-stealing? Not sure how..."
+
+SWAR zero-byte delimiter find:
+  thomaswue.java:323-324 input = word ^ 0x3B3B...; (input - 0x0101...) & ~input & 0x8080...
+  thomaswue.java:270-271 the same with 0x0A0A... for the newline
+  royvanrijn.java:347    identical expression
+  jerrinot.java:277      identical expression, credited to royvanrijn in the source
+
+Branchless fixed-point temperature parse (originated by merykitty, copied by the rest):
+  merykitty.java:169-194 the whole function, with the derivation in comments
+  merykitty.java:174     decimalSepPos = ctz(~word & 0x10101000)   -- bit 4 is 1 in every ascii digit and 0 in '.'
+  merykitty.java:177     signed = (~word << 59) >> 63              -- -1 if '-', else 0
+  merykitty.java:181     digits = ((word & designMask) << shift) & 0x0F000F0F00
+  merykitty.java:191     absValue = ((digits * 0x640a0001) >>> 32) & 0x3FF
+  thomaswue.java:307-318 same, comment credits "Quan Anh Mai"
+  jerrinot.java:241-260  same, comment credits merykitty
+  artsiomkorzun.java:40-41, 564 same constants, DOT_BITS / MAGIC_MULTIPLIER named
+
+Hash and probe:
+  thomaswue.java:45      HASH_TABLE_SIZE = 1 << 17 for MAX_CITIES = 10000
+  thomaswue.java:200-210 hash = maskedFirst8 ^ maskedSecond8, from the first 16 bytes only
+  thomaswue.java:249,260 collision step is +31, not +1
+  thomaswue.java:245-266 name equality compared 8 bytes at a time, final partial word shifted
+  merykitty.java:66      CAPACITY = 1 << 17
+  merykitty.java:244-252 hash from the first 4 and last 4 bytes of the name
+  merykitty.java:253-254 probe step +1
+  royvanrijn.java:359,380,396 hash ^= hash >> 32 ... >> 17, "extra entropy"
+  royvanrijn.java:48-52  "Inlining hash calculation: 2450 ms", "Separate hash from entries: 1550 ms"
+
+Lookup tables instead of shifts:
+  jerrinot.java:64-86    two 9-entry mask tables indexed by delimiter position, credited to abeobk
+  jerrinot.java:349-352  the author's own recorded hypothesis, verbatim:
+                         "it seems that when pulling just from a single chunk then
+                          bit-twiddling is faster than lookup tables / hypothesis: when
+                          processing multiple things at once then LOAD latency is
+                          partially hidden but when processing just one thing then it's
+                          better to keep things local as much as possible? maybe:)"
+
+Escaping runtime teardown:
+  thomaswue.java:49-51,84-91  the process re-execs itself with --worker and pipes the
+                              child's stdout, so the parent exits before the child's
+                              munmap of 13.8 GB is charged to the measured run
+  royvanrijn.java:112         "Idea of thomaswue, don't wait for slow unmap"
+
+gigatoken:
+  gigatoken-lib.rs:1     #![feature(portable_simd)]  -- its kernels are portable-SIMD,
+                         i.e. compare-and-bitmask, the same shape as the NEON idiom below
+  gigatoken.md:69        24.53 GB/s on 2x AMD EPYC 9565 (144 cores) for GPT-2 tokenizing
+                         = 0.17 GB/s per core. Our measured single-core read floor is
+                         1.22 GB/s (02-baseline). Different work; the number is a scale
+                         reference, not a technique. No technique is recoverable from the
+                         public README, and the module sources were not fetchable.
+
+# ============================================================================
+# Probes: every claim below was RUN, not reasoned about
+# ============================================================================
+
+## Probe 1 — arm64 has no PMOVMSKB. What replaces it?
+
+$ cat neon_probe.c   # in this study's history; the body is reproduced in the report
+$ clang -O2 -arch arm64 -o neon_probe neon_probe.c && ./neon_probe
+input           : Hamburg;12.0
+Abha;-2
+shrn4 mask      : 0x00000000f0000000
+shrn4 first ';'  : 7  (ctz>>2)
+shrn4 any        : 1
+vmaxvq any ';'   : 1
+vmaxvq any '#'   : 0
+swar  mask      : 0x8000000000000000
+swar  first ';'  : 7  (ctz>>3)
+shrn4 first NL   : 12 (mask 0x000f000000000000)
+swar  NL in [0,8): no (mask 0x0000000000000000)
+all 16 positions: ctz(mask)>>2 == byte index, 4 set bits per match
+exit=0
+
+  Verified: vceqq_u8 + vshrn_n_u16(...,4) packs 16 byte-comparisons into a 64-bit
+  word at 4 bits per byte, and ctz(mask)>>2 is exactly the index of the first match
+  for all 16 positions. SWAR over the same data agrees on the ';' at index 7, and
+  misses the newline at index 12 because it only sees 8 bytes -- which is the whole
+  argument for the 16-byte window on the name scan.
+
+## Probe 2 — is that idiom expressible in Go's Plan 9 arm64 assembler?
+
+Valid arrangements confirmed against the assembler's own testdata
+($GOROOT/src/cmd/asm/internal/asm/testdata/arm64.s:182 for VSHRN, :112 for VCMEQ;
+arm64error.s:510-515 shows B8->B8, S4->S4 and H8->H8 are rejected, so H8->B8 is the
+one legal form for this use).
+
+$ cd /tmp/asmprobe && go mod init asmprobe && go vet ./... && go test -v ./...
+=== RUN   TestMaskShrn4MatchesScalarReference
+--- PASS: TestMaskShrn4MatchesScalarReference (0.00s)
+PASS
+ok  	asmprobe	0.277s
+
+The assembly that passed, in full:
+
+	#include "textflag.h"
+
+	// func maskShrn4(b []byte, needle byte) uint64
+	TEXT ·maskShrn4(SB), NOSPLIT, $0-40
+		MOVD	b_base+0(FP), R0
+		MOVBU	needle+24(FP), R1
+		VLD1	(R0), [V0.B16]
+		VDUP	R1, V1.B16
+		VCMEQ	V1.B16, V0.B16, V2.B16
+		VSHRN	$4, V2.H8, V3.B8
+		VMOV	V3.D[0], R2
+		MOVD	R2, ret+32(FP)
+		RET
+
+  It was tested against a scalar reference at all 16 delimiter positions, on a real
+  line, and on a needle that does not occur. This settles the feasibility question
+  asm-kernels rests on: Go can express the NEON tokenizer directly, with no cgo.
+
+## Probe 3 — does the Go stdlib already do this?
+
+$ grep -n "0x40100401" $GOROOT/src/internal/bytealg/indexbyte_arm64.s
+	// Magic constant 0x40100401 allows us to identify which lane matches
+	MOVD	$0x40100401, R5
+
+$ grep -rl VCMEQ $GOROOT/src | grep '\.s$'
+/usr/local/go/src/internal/bytealg/count_arm64.s
+/usr/local/go/src/internal/bytealg/equal_arm64.s
+/usr/local/go/src/internal/bytealg/indexbyte_arm64.s
+
+  Verified: bytes.IndexByte, bytes.Count and bytes.Equal are ALREADY hand-written
+  NEON on arm64. IndexByteString works in aligned 32-byte chunks and builds a 64-bit
+  syndrome with 2 bits per byte (indexbyte_arm64.s:7-14), using 0x40100401 =
+  (1<<0)+(4<<8)+(16<<16)+(64<<24) to give each lane a distinct bit. This is the same
+  family as probe 1's 4-bit-per-byte narrowing, at 32 bytes per iteration instead of
+  16. It explains 02-baseline's result that bytes.Count runs at memory bandwidth.
+
+## Probe 4 — does merykitty's parse actually produce the right number?
+
+Reimplemented in Go from the arithmetic described in the entries' comments, then run
+over EVERY legal temperature (-99.9 to 99.9, all 1999 values in tenths), checking
+both the value and the returned next-line offset:
+
+$ cd /tmp/parseprobe && go test -v ./...
+=== RUN   TestSwarParseCoversEveryLegalTemperature
+--- PASS: TestSwarParseCoversEveryLegalTemperature (0.00s)
+PASS
+ok  	parseprobe	0.362s
+
+The function that passed:
+
+	func swarParse(word uint64) (tenths int64, next int) {
+		dotPos := bits.TrailingZeros64(^word & 0x10101000)
+		shift := 28 - dotPos
+		signed := int64(^word<<59) >> 63
+		designMask := ^(signed & 0xFF)
+		digits := (int64(word) & designMask << uint(shift)) & 0x0F000F0F00
+		absValue := (digits * 0x640a0001 >> 32) & 0x3FF
+		return (absValue ^ signed) - signed, dotPos>>3 + 3
+	}
+
+  Exhaustive over the legal domain, so this is not a spot check: 1999 of 1999 values
+  parse to the right tenths, and every returned offset equals the field length
+  including its newline. It needs an 8-byte load from the start of the temperature
+  field, i.e. up to 3 bytes of over-fetch past the newline on the shortest field
+  ("0.0\n"), which is the constraint the chunk boundaries have to respect.
+
+## Probe 5 — how long are the station names, really?
+
+The 16-byte hash window and the 8-byte SWAR word are both bets about name length, so
+the distribution was computed from the key table rather than assumed. Names are
+extracted from the 413 (name, mean) pairs in code/gen/stations.go and measured in
+BYTES, not runes, because that is what the scan sees.
+
+$ python3 -c '<extract {"name" from stations.go, len(name.encode()) for each>'
+entries: 413
+byte length: min 3 max 26 mean 8.0
+>8 bytes : 141/413 = 34.1%
+>16 bytes: 4/413 = 1.0%
+longest: Las Palmas de Gran Canaria 26
+
+  An earlier draft of 03-technique-recon.md asserted "88.6% of names are longer than
+  8 bytes" as the rationale for H2. That number was invented and is wrong by a factor
+  of 2.6. Measured: 34.1%. The correction weakens H2's prediction, which now says the
+  margin may go either way, and it also shows thomaswue's 16-byte hash window has a
+  slow path that fires on 1.0% of rows rather than never.
