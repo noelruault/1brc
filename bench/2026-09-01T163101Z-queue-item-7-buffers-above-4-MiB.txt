@@ -1,0 +1,48 @@
+# experiment 2026-09-01T163101Z
+hypothesis: queue item 7 - buffers above 4 MiB
+prediction: sweep: 4 MiB beat 1 MiB by 2.8% at 1b, 8 and 16 MiB untried at that scale
+file:     measurements-1b.txt   runs: 5   warmup: 1
+commit:   b6fab7c5d1b03605a09e27f46b3a25207d47b97f
+go:       go version go1.27.0 darwin/arm64
+machine:  Apple M5 Pro, hw.ncpu 15, 24 GiB, 26.5.2 arm64
+hyperfine: hyperfine 1.20.0
+power:    'Battery Power' 	30%; discharging; 4:20 remaining present: true
+load:     18:31  up 1 day,  8:50, 18 users, load averages: 5.86 3.50 2.98
+PROVISIONAL: measured on battery, spec.md:42 requires the headline on AC power
+
+$ buf4M: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+$ buf8M: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -buf 8192 > /dev/null
+$ buf16M: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -buf 16384 > /dev/null
+
+Benchmark 1: buf4M
+  Time (mean ± σ):      1.841 s ±  0.068 s    [User: 18.814 s, System: 2.127 s]
+  Range (min … max):    1.757 s …  1.911 s    5 runs
+ 
+Benchmark 2: buf8M
+  Time (mean ± σ):      1.682 s ±  0.029 s    [User: 19.472 s, System: 2.249 s]
+  Range (min … max):    1.649 s …  1.729 s    5 runs
+ 
+Benchmark 3: buf16M
+  Time (mean ± σ):      1.888 s ±  0.115 s    [User: 20.332 s, System: 2.464 s]
+  Range (min … max):    1.763 s …  2.040 s    5 runs
+ 
+Summary
+  buf8M ran
+    1.09 ± 0.04 times faster than buf4M
+    1.12 ± 0.07 times faster than buf16M
+
+== ledger row skeleton, paste into 07-experiment-ledger.md and write the verdict ==
+
+### E-NN — queue item 7 - buffers above 4 MiB
+
+- **Idea:** 
+- **Prediction:** sweep: 4 MiB beat 1 MiB by 2.8% at 1b, 8 and 16 MiB untried at that scale
+- **Measured, invocation 2026-09-01T163101Z (1b, 5 runs, one hyperfine invocation):**
+
+  | Command | Mean [s] | Min [s] | Max [s] | Relative |
+  |:---|---:|---:|---:|---:|
+  | `buf4M` | 1.841 ± 0.068 | 1.757 | 1.911 | 1.09 ± 0.04 |
+  | `buf8M` | 1.682 ± 0.029 | 1.649 | 1.729 | 1.00 |
+  | `buf16M` | 1.888 ± 0.115 | 1.763 | 2.040 | 1.12 ± 0.07 |
+
+- **Verdict:** 

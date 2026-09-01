@@ -1,0 +1,85 @@
+# experiment 2026-09-01T163525Z
+hypothesis: E-16 - the null experiment: eight identical arms
+prediction: E-14 and E-15 rank by slot, not by configuration; eight arms of the SAME binary with the SAME flags will spread by more than 8%, the size of every verdict in this queue
+file:     measurements-1b.txt   runs: 5   warmup: 1
+commit:   b6fab7c5d1b03605a09e27f46b3a25207d47b97f (DIRTY WORKING TREE)
+go:       go version go1.27.0 darwin/arm64
+machine:  Apple M5 Pro, hw.ncpu 15, 24 GiB, 26.5.2 arm64
+hyperfine: hyperfine 1.20.0
+power:    'Battery Power' 	24%; discharging; 3:00 remaining present: true
+load:     18:35  up 1 day,  8:54, 18 users, load averages: 8.51 8.49 5.56
+PROVISIONAL: measured on battery, spec.md:42 requires the headline on AC power
+
+$ slot1: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+$ slot2: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+$ slot3: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+$ slot4: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+$ slot5: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+$ slot6: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+$ slot7: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+$ slot8: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+
+Benchmark 1: slot1
+  Time (mean ± σ):      1.660 s ±  0.017 s    [User: 18.816 s, System: 2.241 s]
+  Range (min … max):    1.638 s …  1.681 s    5 runs
+ 
+Benchmark 2: slot2
+  Time (mean ± σ):      1.690 s ±  0.012 s    [User: 19.317 s, System: 2.248 s]
+  Range (min … max):    1.678 s …  1.706 s    5 runs
+ 
+Benchmark 3: slot3
+  Time (mean ± σ):      1.745 s ±  0.019 s    [User: 19.972 s, System: 2.320 s]
+  Range (min … max):    1.720 s …  1.771 s    5 runs
+ 
+Benchmark 4: slot4
+  Time (mean ± σ):      1.772 s ±  0.036 s    [User: 20.495 s, System: 2.344 s]
+  Range (min … max):    1.741 s …  1.834 s    5 runs
+ 
+Benchmark 5: slot5
+  Time (mean ± σ):      1.796 s ±  0.018 s    [User: 20.748 s, System: 2.384 s]
+  Range (min … max):    1.782 s …  1.817 s    5 runs
+ 
+  Warning: Statistical outliers were detected. Consider re-running this benchmark on a quiet system without any interferences from other programs. It might help to use the '--warmup' or '--prepare' options.
+ 
+Benchmark 6: slot6
+  Time (mean ± σ):      1.811 s ±  0.017 s    [User: 20.958 s, System: 2.378 s]
+  Range (min … max):    1.791 s …  1.830 s    5 runs
+ 
+Benchmark 7: slot7
+  Time (mean ± σ):      1.841 s ±  0.021 s    [User: 21.554 s, System: 2.451 s]
+  Range (min … max):    1.807 s …  1.863 s    5 runs
+ 
+Benchmark 8: slot8
+  Time (mean ± σ):      2.010 s ±  0.092 s    [User: 21.948 s, System: 2.454 s]
+  Range (min … max):    1.870 s …  2.080 s    5 runs
+ 
+Summary
+  slot1 ran
+    1.02 ± 0.01 times faster than slot2
+    1.05 ± 0.02 times faster than slot3
+    1.07 ± 0.02 times faster than slot4
+    1.08 ± 0.02 times faster than slot5
+    1.09 ± 0.02 times faster than slot6
+    1.11 ± 0.02 times faster than slot7
+    1.21 ± 0.06 times faster than slot8
+
+== ledger row skeleton, paste into 07-experiment-ledger.md and write the verdict ==
+
+### E-NN — E-16 - the null experiment: eight identical arms
+
+- **Idea:** 
+- **Prediction:** E-14 and E-15 rank by slot, not by configuration; eight arms of the SAME binary with the SAME flags will spread by more than 8%, the size of every verdict in this queue
+- **Measured, invocation 2026-09-01T163525Z (1b, 5 runs, one hyperfine invocation):**
+
+  | Command | Mean [s] | Min [s] | Max [s] | Relative |
+  |:---|---:|---:|---:|---:|
+  | `slot1` | 1.660 ± 0.017 | 1.638 | 1.681 | 1.00 |
+  | `slot2` | 1.690 ± 0.012 | 1.678 | 1.706 | 1.02 ± 0.01 |
+  | `slot3` | 1.745 ± 0.019 | 1.720 | 1.771 | 1.05 ± 0.02 |
+  | `slot4` | 1.772 ± 0.036 | 1.741 | 1.834 | 1.07 ± 0.02 |
+  | `slot5` | 1.796 ± 0.018 | 1.782 | 1.817 | 1.08 ± 0.02 |
+  | `slot6` | 1.811 ± 0.017 | 1.791 | 1.830 | 1.09 ± 0.02 |
+  | `slot7` | 1.841 ± 0.021 | 1.807 | 1.863 | 1.11 ± 0.02 |
+  | `slot8` | 2.010 ± 0.092 | 1.870 | 2.080 | 1.21 ± 0.06 |
+
+- **Verdict:** 

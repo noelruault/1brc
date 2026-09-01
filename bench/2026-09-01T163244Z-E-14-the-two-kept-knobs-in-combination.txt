@@ -1,0 +1,55 @@
+# experiment 2026-09-01T163244Z
+hypothesis: E-14 - the two kept knobs in combination
+prediction: E-12 gave 10.02% and E-13 8.64% in separate invocations; if they are independent the pair is worth ~17.8% against the same-invocation incumbent
+file:     measurements-1b.txt   runs: 5   warmup: 1
+commit:   b6fab7c5d1b03605a09e27f46b3a25207d47b97f (DIRTY WORKING TREE)
+go:       go version go1.27.0 darwin/arm64
+machine:  Apple M5 Pro, hw.ncpu 15, 24 GiB, 26.5.2 arm64
+hyperfine: hyperfine 1.20.0
+power:    'Battery Power' 	28%; discharging; 3:50 remaining present: true
+load:     18:32  up 1 day,  8:51, 18 users, load averages: 9.14 6.35 4.21
+PROVISIONAL: measured on battery, spec.md:42 requires the headline on AC power
+
+$ default: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+$ w20: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -workers 20 > /dev/null
+$ buf8M: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -buf 8192 > /dev/null
+$ w20buf8M: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -workers 20 -buf 8192 > /dev/null
+
+Benchmark 1: default
+  Time (mean ± σ):      1.715 s ±  0.007 s    [User: 18.671 s, System: 2.249 s]
+  Range (min … max):    1.708 s …  1.722 s    5 runs
+ 
+Benchmark 2: w20
+  Time (mean ± σ):      1.671 s ±  0.019 s    [User: 19.643 s, System: 2.251 s]
+  Range (min … max):    1.649 s …  1.699 s    5 runs
+ 
+Benchmark 3: buf8M
+  Time (mean ± σ):      1.921 s ±  0.025 s    [User: 20.663 s, System: 2.407 s]
+  Range (min … max):    1.884 s …  1.947 s    5 runs
+ 
+Benchmark 4: w20buf8M
+  Time (mean ± σ):      1.935 s ±  0.045 s    [User: 21.163 s, System: 2.515 s]
+  Range (min … max):    1.897 s …  2.010 s    5 runs
+ 
+Summary
+  w20 ran
+    1.03 ± 0.01 times faster than default
+    1.15 ± 0.02 times faster than buf8M
+    1.16 ± 0.03 times faster than w20buf8M
+
+== ledger row skeleton, paste into 07-experiment-ledger.md and write the verdict ==
+
+### E-NN — E-14 - the two kept knobs in combination
+
+- **Idea:** 
+- **Prediction:** E-12 gave 10.02% and E-13 8.64% in separate invocations; if they are independent the pair is worth ~17.8% against the same-invocation incumbent
+- **Measured, invocation 2026-09-01T163244Z (1b, 5 runs, one hyperfine invocation):**
+
+  | Command | Mean [s] | Min [s] | Max [s] | Relative |
+  |:---|---:|---:|---:|---:|
+  | `default` | 1.715 ± 0.007 | 1.708 | 1.722 | 1.03 ± 0.01 |
+  | `w20` | 1.671 ± 0.019 | 1.649 | 1.699 | 1.00 |
+  | `buf8M` | 1.921 ± 0.025 | 1.884 | 1.947 | 1.15 ± 0.02 |
+  | `w20buf8M` | 1.935 ± 0.045 | 1.897 | 2.010 | 1.16 ± 0.03 |
+
+- **Verdict:** 
