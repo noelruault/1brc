@@ -1,0 +1,22 @@
+# bench 2026-09-01T125649Z
+label:    skeleton
+commit:   ba75f9d3d4b5fcc5c0a195a1bbc6d3a4c4cbeced
+go:       go version go1.27.0 darwin/arm64
+machine:  Apple M5 Pro, hw.ncpu 15, 24 GiB, 26.5.2 arm64
+hyperfine: hyperfine 1.20.0
+files:    10m 100m   runs: 5   warmup: 1
+
+$ hyperfine --warmup 1 --runs 5 '/Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-10m.txt > /dev/null'
+Benchmark 1: 1brc 10m
+  Time (mean ± σ):     260.5 ms ±   1.5 ms    [User: 248.1 ms, System: 10.5 ms]
+  Range (min … max):   259.2 ms … 262.9 ms    5 runs
+ 
+
+$ hyperfine --warmup 1 --runs 5 '/Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-100m.txt > /dev/null'
+Benchmark 1: 1brc 100m
+  Time (mean ± σ):      2.607 s ±  0.042 s    [User: 2.510 s, System: 0.093 s]
+  Range (min … max):    2.577 s …  2.673 s    5 runs
+ 
+  Warning: Statistical outliers were detected. Consider re-running this benchmark on a quiet system without any interferences from other programs. It might help to use the '--warmup' or '--prepare' options.
+ 
+
