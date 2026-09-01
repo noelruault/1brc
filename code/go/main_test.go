@@ -391,6 +391,14 @@ func referenceError(body string) error {
 	return err
 }
 
+// TestTheDefaultReadBufferIsTheSweptMinimum pins the reversal E-23 and E-24 bought: 4 MiB was the default on E-06's slot-biased row, and reverting to it fails here.
+// The neighbours are named because the sweep is what makes 1 MiB a minimum rather than a preference — 512 KiB and 2 MiB both lost, disjoint, on either side of it.
+func TestTheDefaultReadBufferIsTheSweptMinimum(t *testing.T) {
+	if defaultBufKiB != 1024 {
+		t.Fatalf("defaultBufKiB = %d, want 1024: E-24 measured 4 MiB +6.56%%, 2 MiB +4.44%% and 512 KiB +3.97%% against it, all disjoint", defaultBufKiB)
+	}
+}
+
 // TestTheDefaultOversubscribesTheCores pins the decision E-17 bought, not the number it landed on: reverting the default to one worker per core fails here.
 func TestTheDefaultOversubscribesTheCores(t *testing.T) {
 	cores := runtime.NumCPU()

@@ -19,7 +19,7 @@ func main() {
 	in := flag.String("in", "measurements.txt", "measurements file to aggregate")
 	cfg := config{}
 	flag.IntVar(&cfg.Workers, "workers", defaultWorkers(), "parallel readers/aggregators")
-	flag.IntVar(&cfg.BufKiB, "buf", 4096, "per-worker read buffer, KiB (pread only)")
+	flag.IntVar(&cfg.BufKiB, "buf", defaultBufKiB, "per-worker read buffer, KiB (pread only)")
 	flag.IntVar(&cfg.SegKiB, "seg", 2048, "segment claimed per turn, KiB (-split cursor only)")
 	flag.IntVar(&cfg.Bits, "bits", 17, "log2 of the per-worker table's bucket count")
 	flag.BoolVar(&cfg.NoCache, "nocache", true, "set F_NOCACHE so reads bypass the page cache (pread only)")
@@ -60,6 +60,10 @@ func main() {
 // defaultWorkers oversubscribes the cores on purpose: E-17 measured 20 workers on this 15-core machine at 7.5% under one-per-core, slot-corrected and disjoint, because a worker blocked in its read leaves its core to another's fold.
 // The ratio is that one measurement generalised so the default still means something on other core counts, not a law; 30 workers also beat 15 and did not separate from 20, so the optimum is a plateau and this is a point inside it.
 func defaultWorkers() int { return runtime.NumCPU() * 4 / 3 }
+
+// defaultBufKiB is a measured minimum, not a round number: E-24 swept 512 KiB, 1 MiB, 2 MiB and 4 MiB in one bracketed invocation and 1 MiB won disjoint from all three, reproducing E-23's reversal of E-06 to 0.27%.
+// The whole gain is kernel-side — system time falls 25.1% while user CPU stays flat — so a change to the reader's syscall shape (double-buffering, io_uring-style batching) invalidates this number rather than inheriting it.
+const defaultBufKiB = 1024
 
 func run(path string, cfg config, out io.Writer) error {
 	stations, err := aggregateFile(path, cfg)
