@@ -6,6 +6,8 @@ set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ASSETS="${ASSETS:-/Users/noelruault/Downloads/1brc/1brc-assets}"
 BIN="$REPO/1brc/code/go/bin/1brc"
+# ARM carries an experiment arm's flags so a variant is byte-compared before it is ever timed.
+read -r -a ARM_ARGV <<< "${ARM:-}"
 
 # The 10k-station case is not optional: a 413-key table can pass the first case and still be wrong on the second.
 CASES=(
@@ -36,14 +38,14 @@ for case in "${CASES[@]}"; do
   got=$(mktemp)
   trap 'rm -f "$got"' EXIT
   start=$(date +%s)
-  "$BIN" -in "$data" > "$got"
+  "$BIN" -in "$data" ${ARM_ARGV[@]+"${ARM_ARGV[@]}"} > "$got"
   elapsed=$(($(date +%s) - start))
 
   if cmp -s "$got" "$want"; then
     entries=$(tr -cd '=' < "$got" | wc -c | tr -d ' ')
-    echo "check-correctness: OK   ${case%%|*} (${entries} stations, ${elapsed}s)"
+    echo "check-correctness: OK   ${case%%|*} (${entries} stations, ${elapsed}s)${ARM:+ [$ARM]}"
   else
-    echo "check-correctness: FAIL ${case%%|*}" >&2
+    echo "check-correctness: FAIL ${case%%|*}${ARM:+ [$ARM]}" >&2
     # Names contain ", " (Washington, D.C.), so never split the line to diff it. Show the first differing byte offset and a window around it instead.
     off=$(cmp "$got" "$want" 2>&1 | sed -n 's/.*differ: char \([0-9]*\).*/\1/p')
     if [[ -n ${off:-} ]]; then

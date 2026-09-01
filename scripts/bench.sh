@@ -7,6 +7,8 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ASSETS="${ASSETS:-/Users/noelruault/Downloads/1brc/1brc-assets}"
 BIN="$REPO/1brc/code/go/bin/1brc"
 LABEL="${1:-$(cd "$REPO" && git rev-parse --short HEAD)}"
+# shellcheck source=lib-provenance.sh
+source "$REPO/1brc/scripts/lib-provenance.sh"
 
 FILES="${FILES:-10m 100m}"
 RUNS="${RUNS:-5}"
@@ -22,22 +24,11 @@ mkdir -p "$REPO/1brc/bench"
 stamp="$(date -u +%Y-%m-%dT%H%M%SZ)"
 out="$REPO/1brc/bench/$stamp-$LABEL.txt"
 
-# spec.md:42 makes power and load part of every recorded measurement, and numbers taken on battery are provisional.
-PROVISIONAL=""
-pmset -g batt | grep -q "AC Power" || PROVISIONAL="PROVISIONAL: measured on battery, spec.md:42 requires the headline on AC power"
-
-# The state the numbers belong to. A timing whose binary cannot be identified is not re-derivable.
 {
   echo "# bench $stamp"
   echo "label:    $LABEL"
-  echo "commit:   $(cd "$REPO" && git rev-parse HEAD)$(cd "$REPO" && git diff --quiet || echo ' (DIRTY WORKING TREE)')"
-  echo "go:       $(go version)"
-  echo "machine:  $(sysctl -n machdep.cpu.brand_string), hw.ncpu $(sysctl -n hw.ncpu), $(($(sysctl -n hw.memsize) / 1024 / 1024 / 1024)) GiB, $(sw_vers -productVersion) $(uname -m)"
-  echo "hyperfine: $(hyperfine --version)"
   echo "files:    $FILES   runs: $RUNS   warmup: $WARMUP"
-  echo "power:    $(pmset -g batt | sed -n '1s/^Now drawing from //p') $(pmset -g batt | sed -n "2s/.*[)]\s*//p")"
-  echo "load:     $(uptime)"
-  echo "$PROVISIONAL"
+  provenance_header "$REPO"
   echo
 } > "$out"
 

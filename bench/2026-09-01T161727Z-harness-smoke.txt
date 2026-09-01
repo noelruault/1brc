@@ -1,0 +1,42 @@
+# experiment 2026-09-01T161727Z
+hypothesis: harness smoke
+prediction: sweep: proves the harness runs end to end, not a result
+file:     measurements-10m.txt   runs: 2   warmup: 1
+NOT A VERDICT: --mechanism-only on the 10m file, E-09 forbids ranking arms here
+commit:   49047722036f88ba53207235d66d7320a03c960a (DIRTY WORKING TREE)
+go:       go version go1.27.0 darwin/arm64
+machine:  Apple M5 Pro, hw.ncpu 15, 24 GiB, 26.5.2 arm64
+hyperfine: hyperfine 1.20.0
+power:    'Battery Power' 	34%; discharging; 3:56 remaining present: true
+load:     18:17  up 1 day,  8:36, 18 users, load averages: 2.30 2.46 2.63
+PROVISIONAL: measured on battery, spec.md:42 requires the headline on AC power
+
+$ incumbent: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-10m.txt  > /dev/null
+$ scalar-parse: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-10m.txt -parse scalar > /dev/null
+
+Benchmark 1: incumbent
+  Time (mean ± σ):      30.9 ms ±   4.9 ms    [User: 183.6 ms, System: 35.6 ms]
+  Range (min … max):    27.4 ms …  34.3 ms    2 runs
+ 
+Benchmark 2: scalar-parse
+  Time (mean ± σ):      32.9 ms ±   0.7 ms    [User: 182.5 ms, System: 37.9 ms]
+  Range (min … max):    32.4 ms …  33.4 ms    2 runs
+ 
+Summary
+  incumbent ran
+    1.07 ± 0.17 times faster than scalar-parse
+
+== ledger row skeleton, paste into 07-experiment-ledger.md and write the verdict ==
+
+### E-NN — harness smoke
+
+- **Idea:** 
+- **Prediction:** sweep: proves the harness runs end to end, not a result
+- **Measured, invocation 2026-09-01T161727Z (10m, 2 runs, one hyperfine invocation):**
+
+  | Command | Mean [ms] | Min [ms] | Max [ms] | Relative |
+  |:---|---:|---:|---:|---:|
+  | `incumbent` | 30.9 ± 4.9 | 27.4 | 34.3 | 1.00 |
+  | `scalar-parse` | 32.9 ± 0.7 | 32.4 | 33.4 | 1.07 ± 0.17 |
+
+- **Verdict:** 
