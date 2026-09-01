@@ -34,7 +34,12 @@ measure_lock_acquire() {
   printf '%s\n' "$who" > "$MEASURE_LOCK/what"
 }
 
-measure_lock_release() { rm -rf "$MEASURE_LOCK"; }
+# measure_lock_release removes only a lock this process owns.
+# MEASURE_LOCK is env-overridable and this is an `rm -rf`, so it refuses anything that is not a directory holding our own pid: a typo'd override must not be able to delete a real directory, and a trap firing late must not delete the next run's lock.
+measure_lock_release() {
+  [[ -f $MEASURE_LOCK/pid && $(cat "$MEASURE_LOCK/pid" 2>/dev/null) == "$$" ]] || return 0
+  rm -rf "$MEASURE_LOCK"
+}
 
 # require_quiet waits for the machine to settle and refuses if it does not, unless QUIET_FORCE=1.
 # A forced run is not blocked but IS stamped by provenance_header, so the number carries its confound.

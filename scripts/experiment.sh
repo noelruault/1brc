@@ -232,6 +232,13 @@ self_test() {
   got=0; out="$(measure_lock_acquire "after a crash" 2>&1)" || got=$?
   if [[ $got -eq 0 && $out == *"stale lock"* ]]; then echo "ok: a lock held by a dead pid is cleared, not obeyed"
   else echo "FAIL (want 0/'stale lock', got $got/'$out'): a stale lock was not cleared" >&2; fails=$((fails + 1)); fi
+  # Release is an `rm -rf` on an env-overridable path, so what it refuses matters as much as what it removes.
+  printf '%s\n' 4242 > "$MEASURE_LOCK/pid"
+  measure_lock_release
+  if [[ -d $MEASURE_LOCK ]]; then echo "ok: releasing a lock owned by another pid leaves it alone"
+  else echo "FAIL: release deleted a directory this process does not own" >&2; fails=$((fails + 1)); fi
+
+  printf '%s\n' "$$" > "$MEASURE_LOCK/pid"
   measure_lock_release
   if [[ ! -d $MEASURE_LOCK ]]; then echo "ok: releasing the lock removes it"
   else echo "FAIL: the lock survived its release" >&2; fails=$((fails + 1)); fi
