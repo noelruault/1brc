@@ -560,9 +560,9 @@ Mutation testing, run on a copy of the module under /tmp so the tracked tree sta
 clean. Ten mutants, all caught:
 
   caught    M1 digit-count check          (dropped -> "100.0" accepted)
-  caught    M2 sign-byte check            (dropped -> "b;1.0" accepted)
+  caught    M2 sign-byte check            (dropped -> "\x005.0" accepted)
   caught    M3 digit low nibble           (-> ':' passes as a digit)
-  caught    M4 digit high nibble          (-> '/' passes as a digit)
+  caught    M4 digit high nibble          (-> 'b' passes as a digit)
   caught    M5 lane under the dot         (one of three digit-lane masks)
   caught    M6 lane at neg                (one of three digit-lane masks)
   caught    M7 lane above the dot         (one of three digit-lane masks)
@@ -578,6 +578,51 @@ clean. Ten mutants, all caught:
   replacement string was over-escaped, the assertion failed, the mutation never
   applied, and the unmutated tests passed. A mutation harness has to fail loud when
   its mutation does not apply, or it reports the opposite of the truth.
+
+The review gate then measured EXCLUSIVITY rather than trusting "ten mutants caught",
+because a mutant is caught by the whole test and that does not say which guard was
+doing the work. Each guard was dropped one at a time (a temporary auditWord copy
+under /tmp, not committed) and each candidate field re-tested; `true` means the field
+became ACCEPTED with that guard dropped, i.e. that guard is the only one rejecting it:
+
+  field         full   noCount  noSign  noDigits  noNewline  noDot
+  "100.0\n"     false  TRUE     false   false     false      false
+  "\x005.0\n"   false  false    TRUE    false     false      false
+  ".5.0\n"      false  false    TRUE    false     false      false
+  "(5.0\n"      false  false    TRUE    false     false      false
+  "1x.5\n"      false  false    false   TRUE      false      false
+  "1.5x"        false  false    false   false     TRUE       false
+  "1-5\n"       false  false    false   false     false      TRUE
+  "b;1.0\n"     false  false    false   false     false      false
+  "-.5\n"       false  false    false   false     false      false
+  "1.5\n"       TRUE   TRUE     TRUE    TRUE      TRUE       TRUE
+
+  All five guards are individually load-bearing, and this table CORRECTED two
+  examples that had been written from reasoning rather than measured:
+
+  - "b;1.0" was published as the sign guard's case. It is not: two guards reject it
+    (the sign byte, because 'b' has bit 4 clear and is not '-', and the digit lanes,
+    because ';' sits in the digit run), so dropping either one alone still rejects
+    it. The sign guard's exclusive case is a bit-4-clear byte that is NOT ';'-shaped,
+    e.g. "\x005.0" or "(5.0".
+  - "-.5" was published as a second case for the digit count. It is not: the digit
+    lanes reject it too, since the '.' lands inside the run.
+  - the same class of error put '/' (0x2F) in M4's line and in nonDigitMask's comment
+    as a byte the low-nibble test accepts. It is not: 0x2F fails BOTH halves (low
+    nibble 0xF + 6 carries out of the nibble). The byte that passes the low-nibble
+    test and fails the high one is 'b' (0x62), or any 0x_0-0x_9 outside 0x30-0x39.
+
+  $ python3 -c "
+  def hi(b): return (b^0x30)&0xF0
+  def lo(b): return ((b&0x0F)+0x06)&0xF0
+  for b in [0x30,0x39,0x3A,0x2F,0x20,0x62]:
+      print('%#04x %-3r high-nibble %s  low-nibble %s  digit=%s' % (b, chr(b), 'fail' if hi(b) else 'pass', 'fail' if lo(b) else 'pass', hi(b)==0 and lo(b)==0))"
+  0x30 '0'  high-nibble pass  low-nibble pass  digit=True
+  0x39 '9'  high-nibble pass  low-nibble pass  digit=True
+  0x3a ':'  high-nibble pass  low-nibble fail  digit=False
+  0x2f '/'  high-nibble fail  low-nibble fail  digit=False
+  0x20 ' '  high-nibble fail  low-nibble pass  digit=False
+  0x62 'b'  high-nibble fail  low-nibble pass  digit=False
 
 Wiring proof for the new -parse default, same reason as -buf above:
 

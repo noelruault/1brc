@@ -88,7 +88,7 @@ The second fact from the same command matters for C3: a single shard's entry arr
 
 **Prediction, with its assumption stated.** The ledger measures 19.657 s of user CPU against 1.742 s of wall clock, which is 11.28 of 15 cores busy. If explicit double buffering closed the *whole* idle gap and nothing else changed, the same CPU work spread over 15 busy cores would take 19.657 / 15 = **1.310 s**. That is a **ceiling**, not a prediction: it assumes every idle core is idle because of read stalls, which is precisely what has not been measured. Predict something between 5% and that ceiling's 25%.
 
-**Superseded by measurement, and not a correction: the assumption held and the number moved because the binary got faster.** E-20 measured the idle gap with `-phases` and it *is* the read (29-30% of worker wall blocked in `pread`, against shard skew under 4% and a merge under 0.4%), so the assumption this paragraph flagged as unmeasured is now measured and stands. The ceiling itself is recomputed on the current baseline — 18.53 s of CPU over 15 cores is 1.235 s against a 1.50 s wall — which is **17.6%, not 25%**, because E-17's oversubscription already took some of the gap this figure was reserving. The ledger's queue item 14 and its board row carry the measured number; this paragraph keeps the original so the arithmetic that produced 25% stays readable.
+**Superseded by measurement, and not a correction: the assumption held and the number moved because the binary got faster.** E-20 measured the idle gap with `-phases` and it *is* the read (29-30% of worker wall blocked in `pread`, against shard skew under 4% and a merge under 0.4%), so the assumption this paragraph flagged as unmeasured is now measured and stands. The ceiling itself is recomputed on the baseline of the day — 18.53 s of CPU over 15 cores is 1.235 s against a 1.50 s wall — which is **17.6%, not 25%** (**and 19.1% on E-25's baseline, 1.152 s against a 1.424 s wall; the ledger's board carries the current figure**), because E-17's oversubscription already took some of the gap this figure was reserving. The ledger's queue item 14 and its board row carry the measured number; this paragraph keeps the original so the arithmetic that produced 25% stays readable.
 
 **A trap to name, because this report nearly walked into it.** The ledger's "0.988 s of compute" is *defined* as 1.742 − 0.754. Adding it back to the floor to conclude "the sum is the wall clock, therefore nothing overlaps" is circular, and it is the kind of arithmetic the last review gate caught twice. The claim above rests on the shape of the loop instead.
 
@@ -112,7 +112,7 @@ The ranking that falls out, by the size of the gap each could close:
 
 | | candidate | mechanism it borrows | predicted | blocked on |
 |---|---|---|---|---|
-| 1 | **H-14** double-buffered workers | DPDK's fill-while-you-process | 5% to a 25% ceiling [**re-derived on the current baseline: 17.6%, E-20**] | nothing |
+| 1 | **H-14** double-buffered workers | DPDK's fill-while-you-process | 5% to a 25% ceiling [**re-derived per baseline: 17.6% at E-20, 19.1% at E-25**] | nothing |
 | 2 | **H-11** core-class-weighted split | morsel-driven parallelism, minus the part E-02 killed | 3-17%, `r` unknown | measuring `r` |
 | 3 | **H-13** quotiented 32-byte entry | k-mer count tables | 0-4% at 413, more at 10k | nothing |
 | 4 | **H-12** vectorized probe | vectorized query execution | <3% at 413, >10% at 10k | a 1b 10k file for the half that matters |

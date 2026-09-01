@@ -78,7 +78,7 @@ const (
 // nonDigitMask sets bits in the high nibble of every lane of w that is not an ASCII digit, and leaves every digit lane zero.
 //
 // The low-nibble add cannot carry into the next lane: masking to 0x0F first bounds each lane at 0x15, so the eight tests stay independent.
-// A lane is a digit exactly when its high nibble is 3 and its low nibble is under 10, which is why both halves are needed: 0x3A passes the first test and 0x2F the second.
+// A lane is a digit exactly when its high nibble is 3 and its low nibble is under 10, which is why both halves are needed: ':' (0x3A) passes the high-nibble test and 'b' (0x62) passes the low-nibble one.
 func nonDigitMask(w uint64) uint64 {
 	return (w^digitThrees)&digitHighNibbles | ((w&digitLowNibbles)+digitSixes)&digitHighNibbles
 }
@@ -86,7 +86,9 @@ func nonDigitMask(w uint64) uint64 {
 // parseTempWord is parseTempBranchless with validTemp's format rejection folded into the same 8-byte word, so the shape is established from bits already in a register instead of from four to six dependent byte compares behind an unpredictable three-way switch on next.
 //
 // It must accept and reject byte for byte what parseTempBranchless plus validTemp accept and reject, and TestParseTempWordMatchesTheByteCheck pins that over every 6-byte string in the alphabet the shape is built from.
-// The four rejections are ORed into one accumulator so no test can branch: the '.' and '\n' at their fixed offsets from the dot lane, the digit lanes, the sign byte when the parse read one, and the digit COUNT, which is the check that rejects "100.0" (three digits and no sign) and "-.5" (a sign and none).
+// The four rejections are ORed into one accumulator so no test can branch: the '.' and '\n' at their fixed offsets from the dot lane, the digit lanes, the sign byte when the parse read one, and the digit COUNT.
+// Each is load-bearing alone, measured by dropping one at a time: only the count rejects "100.0", only the sign byte rejects "\x005.0", only the digit lanes reject "1x.5", only the '\n' lane rejects "1.5x" and only the '.' lane rejects "1-5".
+// The one branch kept is parseTempBranchless's own dot > 28 guard, which a negative shift would otherwise panic on.
 func parseTempWord(b []byte) (tenths int32, next int, ok bool) {
 	w := binary.LittleEndian.Uint64(b)
 	dot := bits.TrailingZeros64(^w & parseDotBits)
