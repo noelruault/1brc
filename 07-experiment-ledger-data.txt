@@ -453,3 +453,145 @@ tell a wired constant from an unused one:
   $ ./bin/1brc -h 2>&1 | grep -A1 '^  -buf'
     -buf int
       	per-worker read buffer, KiB (pread only) (default 1024)
+
+================================================================================
+E-25 — queue item 16, the format check folded into the parse's own word
+================================================================================
+
+  $ bash 1brc/scripts/experiment.sh -i 'queue item 16' \
+      -p 'the unpredictable three-way switch on next plus four to six dependent byte loads leave the row loop; 5-12% off the wall, ceiling 18.2% of user CPU (E-21)' \
+      -a 'incumbent=' -a 'word=-parse word' -a 'incumbent-last='
+
+Full raw output, including the provenance header, is committed at
+1brc/bench/2026-09-01T212026Z-queue-item-16.txt. The header lines that gate the row:
+
+  commit:   bde92b1452c4571b7d5dfbd96b0f0ca715f11154
+  file:     measurements-1b.txt   runs: 5   warmup: 1   cooldown: 20s
+  power:    'AC Power' 	100%; charged; 0:00 remaining present: true
+  load:     23:20  up 1 day, 13:39, 22 users, load averages: 1.96 1.76 2.01
+
+No NOT QUIET stamp and no NOT SLOT-CORRECTED stamp, so require_quiet was satisfied
+and the 20 s cooldown ran before every timed run.
+
+Correctness gate, run by experiment.sh per arm BEFORE any timing:
+
+  experiment: correctness gate for arm 'incumbent' (no flags)
+  check-correctness: OK   measurements-10m.txt (413 stations, 1s)
+  check-correctness: OK   measurements-10k-stations-10m.txt (10000 stations, 0s)
+  experiment: correctness gate for arm 'word' (-parse word)
+  check-correctness: OK   measurements-10m.txt (413 stations, 0s) [-parse word]
+  check-correctness: OK   measurements-10k-stations-10m.txt (10000 stations, 0s) [-parse word]
+  experiment: correctness gate for arm 'incumbent-last' (no flags)
+  check-correctness: OK   measurements-10m.txt (413 stations, 0s)
+  check-correctness: OK   measurements-10k-stations-10m.txt (10000 stations, 0s)
+
+Timings:
+
+  Benchmark 1: incumbent
+    Time (mean ± σ):      1.498 s ±  0.008 s    [User: 18.414 s, System: 1.536 s]
+    Range (min … max):    1.489 s …  1.510 s    5 runs
+
+  Benchmark 2: word
+    Time (mean ± σ):      1.424 s ±  0.009 s    [User: 17.279 s, System: 1.539 s]
+    Range (min … max):    1.414 s …  1.438 s    5 runs
+
+  Benchmark 3: incumbent-last
+    Time (mean ± σ):      1.499 s ±  0.007 s    [User: 18.479 s, System: 1.516 s]
+    Range (min … max):    1.493 s …  1.509 s    5 runs
+
+Every derived figure in the E-25 row, evaluated rather than written in prose:
+
+  $ python3 -c "
+  inc, inc2, word = 1.498, 1.499, 1.424
+  uinc, uinc2, uword = 18.414, 18.479, 17.279
+  m, um = (inc+inc2)/2, (uinc+uinc2)/2
+  print('bracket spread       %.3f%%' % ((inc2-inc)/inc*100))
+  print('wall vs bracket mean %.2f%% (vs slot 1 %.2f%%, vs slot 3 %.2f%%)' % ((word-m)/m*100, (word-inc)/inc*100, (word-inc2)/inc2*100))
+  print('user CPU %.3f -> %.3f = %.2f%%' % (um, uword, (uword-um)/um*100))
+  print('compute floor        %.4f s (was %.4f s here, 1.235 s at E-20)' % (uword/15, um/15))
+  print('busy cores           %.2f of 15 = %.1f%% (incumbent %.2f = %.1f%%)' % (uword/word, uword/word/15*100, um/m, um/m/15*100))
+  print('read floor share     %.1f%% of the wall (was %.1f%%)' % (0.7544/word*100, 0.7544/m*100))
+  print('CPU per row          %.2f ns against the 15.00 budget = %.1f%% over' % (uword, (uword/15.0-1)*100))
+  print('the new check costs  %.2f points of CPU = %.1f%% of validTemp' % (18.2-6.33, (18.2-6.33)/18.2*100))
+  print('gap to 1.000 s       %.3f s ; E-24 1.510 reproduced here at %.3f = %.2f%%' % (word-1.0, inc, (inc-1.510)/1.510*100))"
+  bracket spread       0.067%
+  wall vs bracket mean -4.97% (vs slot 1 -4.94%, vs slot 3 -5.00%)
+  user CPU 18.447 -> 17.279 = -6.33%
+  compute floor        1.1519 s (was 1.2298 s here, 1.235 s at E-20)
+  busy cores           12.13 of 15 = 80.9% (incumbent 12.31 = 82.1%)
+  read floor share     53.0% of the wall (was 50.3%)
+  CPU per row          17.28 ns against the 15.00 budget = 15.2% over
+  the new check costs  11.87 points of CPU = 65.2% of validTemp
+  gap to 1.000 s       0.424 s ; E-24 1.510 reproduced here at 1.498 = -0.79%
+
+Disjointness, read off the ranges above rather than computed: word's [1.414-1.438]
+lies entirely below incumbent's [1.489-1.510] and incumbent-last's [1.493-1.509].
+
+The stale-share derivation on the queue board, and the bound that makes it quotable:
+
+  $ python3 -c "
+  for t in (18.53, 18.447):
+      print('against a %.3f s total:' % t, ', '.join('%s %.1f%%' % (n, s/100*t/17.279*100) for n, s in [('indexDelim',33.5),('update',15.9),('memequal',5.8)]))
+  print('the two invocations differ by %.2f%%' % ((18.53-18.447)/18.447*100))"
+  against a 18.530 s total: indexDelim 35.9%, update 17.1%, memequal 6.2%
+  against a 18.447 s total: indexDelim 35.8%, update 17.0%, memequal 6.2%
+  the two invocations differ by 0.45%
+
+Correctness evidence for the new check, all of it before the timing:
+
+  $ go test -run TestParseTempWord -v ./...
+  === RUN   TestParseTempWordAcceptsEveryLegalTemperature
+  --- PASS: TestParseTempWordAcceptsEveryLegalTemperature (0.00s)
+  === RUN   TestParseTempWordMatchesTheByteCheck
+  --- PASS: TestParseTempWordMatchesTheByteCheck (0.02s)
+  ok  	github.com/noelruault/research/1brc/code/go	0.215s
+
+  TestParseTempWordMatchesTheByteCheck sweeps 2 x 10^6 six-byte fields over the
+  alphabet {'-','0','1','9','.','\n',';',':',0x00,'b'} with two over-read fillers
+  (0xFF and 0x00), and compares every verdict against BOTH the incumbent pair
+  (parseTempBranchless + validTemp) and the independent parseTempScalar, which is
+  the oracle the board asked for. 2,574 fields are accepted, and that count is
+  pinned: 9 shapes of `D.D\n` x 100 free trailing bytes, 36 of `-D.D\n` and
+  `DD.D\n` x 10, and 27 of `-DD.D\n`, over the 3 digits in the alphabet, x 2
+  fillers. A mutant that rejects everything passes every comparison in the loop
+  and fails only that count.
+
+Mutation testing, run on a copy of the module under /tmp so the tracked tree stayed
+clean. Ten mutants, all caught:
+
+  caught    M1 digit-count check          (dropped -> "100.0" accepted)
+  caught    M2 sign-byte check            (dropped -> "b;1.0" accepted)
+  caught    M3 digit low nibble           (-> ':' passes as a digit)
+  caught    M4 digit high nibble          (-> '/' passes as a digit)
+  caught    M5 lane under the dot         (one of three digit-lane masks)
+  caught    M6 lane at neg                (one of three digit-lane masks)
+  caught    M7 lane above the dot         (one of three digit-lane masks)
+  caught    M8 newline in the pattern     (-> a field with no '\n' accepted)
+  caught    M9 dot lane in the mask       (-> a field with no '.' accepted)
+  caught    M10 neg from the sign word    (-> every negative rejected)
+
+  M5, M6 and M7 were mutated separately on purpose: the standing lesson is that a
+  guard can survive because a SIBLING guard masks it, and three overlapping
+  digit-lane masks are exactly that shape. Each one is individually load-bearing.
+
+  One harness note worth keeping: the first M8 run reported SURVIVED because the
+  replacement string was over-escaped, the assertion failed, the mutation never
+  applied, and the unmutated tests passed. A mutation harness has to fail loud when
+  its mutation does not apply, or it reports the opposite of the truth.
+
+Wiring proof for the new -parse default, same reason as -buf above:
+
+  $ ./bin/1brc -h 2>&1 | grep -A1 '^  -parse'
+    -parse string
+      	temperature parse and format check: branchless | scalar (H3) | word (E-25) (default "word")
+
+  $ ./bin/1brc -in /dev/null -kernel batch-swar
+  1brc: -kernel batch-swar has no word parse arm; use -kernel row with -parse word, or add -parse branchless
+
+  The second line is the consequence of moving the default: the batch kernels parse
+  branchlessly and check the format with validTemp, so they now have to say so
+  explicitly rather than inherit it. Byte-compared green with the flag they need:
+
+  $ ARM="-kernel batch-swar -parse branchless" bash 1brc/scripts/check-correctness.sh
+  check-correctness: OK   measurements-10m.txt (413 stations, 0s) [-kernel batch-swar -parse branchless]
+  check-correctness: OK   measurements-10k-stations-10m.txt (10000 stations, 0s) [-kernel batch-swar -parse branchless]
