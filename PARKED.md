@@ -18,11 +18,13 @@ The baseline every entry below was measured against, so a future reader can see 
 
 **Revive when.** Any of: a Go release exposes the vector-to-general move as an intrinsic, or `//go:noescape` assembly becomes inlinable, either of which deletes the call half of the measured cost; or a kernel is needed for an input whose names average over ~32 bytes, where the window advantage is largest; or the batch shape (`TokenizeBatch`) is rejected end-to-end in `go-v1-parallel` and a per-row scan is the shape being optimised again.
 
+> **This last trigger FIRED, the entry was re-read, and it stays parked** (`go-v2-kernels`, `07-experiment-ledger.md` E-10). The batch shape lost end to end by 9.8-10.4% at 1b and the per-row scan IS the shape being optimised again — but P-01's own number is a comparison *between* per-row scans, and per-row NEON lost to per-row SWAR by 16.3-23.1%. The trigger fired into an entry whose number still says no. Firing a trigger is not the same as reviving, and recording the difference is the point of the register.
+
 **Cost to revive.** Low. The kernel exists, is correct, is mutation-tested and has a page-guard test; reviving is re-running the benchmark, not rebuilding.
 
 **Where.** `1brc/code/asm/neon_arm64.s`, `neon_arm64.go`, `TokenizeStagedNEON` in `tokenize.go`; benchmarks `BenchmarkTokenize/staged-neon` and `BenchmarkNEONTransferFloor`; numbers in `04-asm-kernels-data.txt`; commits `20aa0d3`, `e29141f`, `a4a49df`.
 
-> **Not killed.** The mechanism is not wrong; it is priced wrong at one transfer per row. Its own rescue is already measured and lives in the batch kernel, which pays the same transfer once per window instead.
+> **Not killed.** The mechanism is not wrong; it is priced wrong at one transfer per row. Its own rescue lived in the batch kernel, which pays the same transfer once per window — and E-10 has now measured that rescue losing 10.4% end to end at 1b, so P-01 has one fewer route back than it had when it was written.
 
 ---
 
@@ -34,7 +36,7 @@ The baseline every entry below was measured against, so a future reader can see 
 
 **Depends on.** (a) The 1.080 ns/row per-row transfer floor — the same figure P-01 depends on, so both entries go stale together. (b) The parse staying a per-row operation; the bound assumes one transfer per row and says nothing about a parse inside a batched loop. (c) The 1.735/3.295 ns/row spread between the scalar and branchless parses, which is itself input-dependent and was measured with the separator scan held fixed at SWAR.
 
-**Revive when.** The batch shape wins end-to-end in `go-v1-parallel`. A parse inside a batched loop amortises the same transfer over ~2.3 rows, at which point the bound above no longer applies and H3 has a third variant worth building. Also revive on either P-01 trigger (a) — an intrinsic or an inlinable call moves the floor for both.
+**Revive when.** ~~The batch shape wins end-to-end in `go-v1-parallel`.~~ **This trigger is now SPENT: `go-v2-kernels` measured both batch arms losing at 1b by 9.8% and 10.4%, disjoint (`07-experiment-ledger.md` E-10), so the batched loop this entry was waiting for is not the loop the binary runs.** What remains is either P-01 trigger (a) — an intrinsic or an inlinable call, which moves the floor for both entries — or an input whose names average over ~32 bytes, where E-10's revive trigger and this one coincide. Without one of those, the 1.080 ns/row per-row transfer bound stands and this entry moves toward `killed`.
 
 **Cost to revive.** Moderate. Unlike P-01 nothing exists: a kernel, a scalar-reference correctness check over all 1999 legal temperatures at every alignment, and a benchmark. Perhaps a day.
 

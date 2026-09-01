@@ -98,7 +98,7 @@ Two things were fixed before this number was allowed to stand, both of which wou
 | | what to build | why |
 |---|---|---|
 | separator scan | 8-byte SWAR, not a per-row NEON scan | H2 falsified, 16.3-23.1% |
-| whole-row shape | batch a 32-byte dual-needle window into a token stream | −40.4% / −40.7% on the official key set, the largest win measured |
+| whole-row shape | ~~batch a 32-byte dual-needle window into a token stream~~ **FALSIFIED end-to-end, see `07-experiment-ledger.md` E-10** | −40.4% / −40.7% on the official key set, the largest win measured *here*; `go-v2-kernels` built both batch arms into the real loop and measured them **9.8% and 10.4% SLOWER than the per-row scan at 1b**, disjoint. The microbenchmark's baseline was a staged per-row tokenizer writing a token stream, which is not the shape this binary ever had. |
 | temperature parse | both, behind one flag | H3 split; the winner is set by branch predictability, which only the real 15-shard loop settles |
 | name mask | shift, not a lookup table | H6, 22.6% single / 11.7% interleaved |
 

@@ -22,9 +22,11 @@ Raw commands, machine facts and every piece of arithmetic: [`06-cross-disciplina
 
 The last row is where the transfer is sharpest, and it is also where this study has already measured something the field would not predict: E-02 KILLED the shared-cursor split (the direct analogue of morsel dispatch) at 1b, 21% slower. That is a finding about THIS machine and THIS I/O path, and the interesting question is which half of the morsel idea it killed. See C1.
 
-## What the machine actually is, which no earlier report recorded
+## What the machine is, and the one prior claim about it that nothing has measured
 
-`sysctl` says this machine has **two core classes**: 5 "Super" cores with 16 MiB of L2, and 10 "Performance" cores with 8 MiB (companion §1). Every report so far, and `main.go`'s `runtime.NumCPU()` default, has treated the 15 as interchangeable. They are not, and the static equal split in `reader.go` hands each of the 15 an identical share of the file. If the two classes differ in throughput at all, the wall clock is set by the slowest class and the fast cores wait — which is a mechanism for part of the idle 25% that queue item 3 has so far only named.
+The two core classes are already on the record: `01-definition.md:91`, `02-baseline.md:15` and `03-technique-recon.md:25` all name 5 "Super" and 10 "Performance" cores. What is new here is the **L2 asymmetry** — 16 MiB for the Super cluster against 8 MiB for the Performance one (companion §1) — and, more usefully, that `02-baseline.md:15` left a hypothesis standing that nothing has tested: *"a uniform 15-way split is close to optimal on this chip"*, on the argument that both tiers are fast and neither is an E-core.
+
+That hypothesis is what `reader.go` implements, and it has never been measured against the alternative. If the two classes differ in throughput at all, the equal split's wall clock is set by the slower class and the Super cores wait — a mechanism for part of the idle 25% that queue item 3 has so far only named.
 
 The second fact from the same command matters for C3: a single shard's entry array is **6.00 MiB** (measured, companion §2), and fifteen of them are 90.0 MiB against 16 + 8 MiB of total L2. That number was published as 4 MiB at five sites, from an assumed 32-byte entry; it is 48 bytes on darwin/arm64. Corrected at every site, `CORRECTIONS.md` C4.
 
@@ -34,7 +36,7 @@ The second fact from the same command matters for C3: a single shard's entry arr
 
 **What this study already measured.** E-02 built the dispatch half — a shared atomic cursor over 2 MiB segments — and it lost by 21% at 1b. But that arm changed **two** things: it made the work dynamic, and it destroyed each worker's sequential read locality, because a worker's segments are no longer contiguous and `F_NOCACHE` reads have no readahead behind them. The 21% is attributed to the second change and nothing isolated the first.
 
-**The transfer.** Heterogeneity is a **third** axis that neither arm touched. A static split *weighted by core class* keeps every worker's range contiguous (so it does not pay E-02's price) while removing the imbalance (so it collects morsel dispatch's actual benefit).
+**The transfer.** A static split *weighted by core class* is the **third** arm neither run tried: it keeps every worker's range contiguous, so it does not pay E-02's price, while removing the imbalance, so it collects morsel dispatch's actual benefit. E-02's own hypothesis line names the asymmetry as its motivation, so this is not a new idea about the machine — it is the untried way of acting on an idea the study has had since `03-technique-recon.md`.
 
 **Prediction, derived** (companion §4): if the fast class runs at `r` times the slow class, proportional weighting is worth `(r/3 + 2/3)×` the equal-split wall clock — 3.3% at `r = 1.1`, 10.0% at `r = 1.3`, 16.7% at `r = 1.5`. `r` is unknown for this machine, so the experiment is two-step: measure `r` first (`-workers 5` against `-workers 10` at 1b tells us nothing directly, because I/O confounds it; a compute-bound single-worker probe over a resident buffer is the clean measurement), then run the weighted split end to end at 1b.
 
@@ -113,4 +115,4 @@ The ranking that falls out, by the size of the gap each could close:
 | 3 | **H-13** quotiented 32-byte entry | k-mer count tables | 0-4% at 413, more at 10k | nothing |
 | 4 | **H-12** vectorized probe | vectorized query execution | <3% at 413, >10% at 10k | a 1b 10k file for the half that matters |
 
-The honest summary of this pass: the biggest thing it found is not a kernel, it is that **the reader alternates instead of overlapping**, and the second biggest is that **the machine has two kinds of core and the code has never known it**. Both were sitting in the existing measurements; it took borrowing someone else's vocabulary to see them.
+The honest summary of this pass: the biggest thing it found is not a kernel, it is that **the reader alternates instead of overlapping**, and the second biggest is that **`02-baseline.md`'s "a uniform 15-way split is close to optimal" is an unmeasured hypothesis the code has been treating as a decision**. Both were sitting in the existing measurements; it took borrowing someone else's vocabulary to see them.

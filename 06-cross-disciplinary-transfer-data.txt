@@ -11,7 +11,7 @@ NOTE:    battery => every timing taken in this session is PROVISIONAL per spec.m
          machine facts below (core classes, cache sizes) are read from the same session.
 
 ================================================================================
-1. THE CORE-CLASS FACT — this machine is heterogeneous, and no earlier report says so
+1. THE CORE CLASSES — the counts are already in 01/02/03; the L2 asymmetry below is new
 ================================================================================
 
 $ sysctl hw.ncpu hw.nperflevels hw.perflevel0.name hw.perflevel0.logicalcpu \
