@@ -58,7 +58,7 @@ func TokenizeBatch(buf []byte, out []Token) (rows, consumed int) {
 	pendingSep := -1
 	rowStart := 0
 	for pos := 0; pos+batchWindow <= len(work); pos += batchWindow {
-		semi, nl := neonDelimMask32(work[pos:])
+		semi, nl := DelimMask32(work[pos:])
 		for semi|nl != 0 {
 			s, l := 64, 64
 			if semi != 0 {

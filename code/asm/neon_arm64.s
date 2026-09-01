@@ -69,12 +69,12 @@ TEXT ·neonTransferProbe(SB), NOSPLIT, $0-32
 	MOVD	R9, ret+24(FP)
 	RET
 
-// func neonDelimMask32(b []byte) (semi, nl uint64)
+// func DelimMask32(b []byte) (semi, nl uint64)
 // One 32-byte load answered for BOTH needles, gigatoken's shape: the vector-to-general transfer is
 // amortised over every row in the window instead of paid once per row.
 // The 0x40100401 syndrome (Go's own bytes.IndexByte idiom) gives lane k the bit at position 2k, so ctz>>1 is the offset.
 // b must have at least 32 readable bytes.
-TEXT ·neonDelimMask32(SB), NOSPLIT, $0-40
+TEXT ·DelimMask32(SB), NOSPLIT, $0-40
 	MOVD	b_base+0(FP), R0
 	MOVD	$0x40100401, R5
 	VMOV	R5, V5.S4

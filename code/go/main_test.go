@@ -14,7 +14,7 @@ import (
 
 // defaults is what the binary runs with when nobody passes a flag; every test that is not about a strategy uses it, so a default that breaks correctness fails everything.
 func defaults() config {
-	return config{Workers: 4, BufKiB: 4096, SegKiB: 2048, Bits: 12, NoCache: false, Split: "static", Table: "combined", IO: "pread", Parse: "branchless"}
+	return config{Workers: 4, BufKiB: 4096, SegKiB: 2048, Bits: 12, NoCache: false, Split: "static", Table: "combined", IO: "pread", Parse: "branchless", Kernel: "row"}
 }
 
 // strategies is every combination of the four open hypotheses' flags. Correctness must hold for all of them or a benchmark of one arm is measuring a bug.
@@ -28,6 +28,12 @@ func strategies() []config {
 					c.Split, c.Table, c.IO, c.Parse = split, layout, io, parse
 					out = append(out, c)
 				}
+				// The batch kernels have no scalar arm, so they are swept on their own rather than as a fifth dimension that would be half-empty.
+				for _, k := range []string{"batch-swar", "batch-neon"} {
+					c := defaults()
+					c.Split, c.Table, c.IO, c.Kernel = split, layout, io, k
+					out = append(out, c)
+				}
 			}
 		}
 	}
@@ -35,7 +41,7 @@ func strategies() []config {
 }
 
 func (c config) label() string {
-	return fmt.Sprintf("%s/%s/%s/%s", c.Split, c.Table, c.IO, c.Parse)
+	return fmt.Sprintf("%s/%s/%s/%s/%s", c.Split, c.Table, c.IO, c.Parse, c.Kernel)
 }
 
 // TestRunMatchesTheReferenceByteForByte is the whole correctness contract in miniature:
@@ -268,7 +274,7 @@ func TestTableLayoutsAgree(t *testing.T) {
 	for _, split := range []bool{false, true} {
 		for _, fast := range []bool{false, true} {
 			tab := newTable(9, split)
-			if err := tab.fold(data, fast, 0); err != nil {
+			if err := tab.fold(data, kernelRow, fast, 0); err != nil {
 				t.Fatalf("split=%v fast=%v: %v", split, fast, err)
 			}
 			got := map[string]*gen.Accumulator{}
@@ -308,7 +314,7 @@ func TestTableProbesPastAFullBucketRun(t *testing.T) {
 	for _, split := range []bool{false, true} {
 		// Eight bits is 256 buckets for 200 keys: a 78% load factor, where linear probing runs are long.
 		tab := newTable(8, split)
-		if err := tab.fold(data, true, 0); err != nil {
+		if err := tab.fold(data, kernelRow, true, 0); err != nil {
 			t.Fatal(err)
 		}
 		got := map[string]*gen.Accumulator{}
@@ -327,7 +333,7 @@ func TestTableTooSmallErrorsInsteadOfHanging(t *testing.T) {
 	}
 	for _, split := range []bool{false, true} {
 		// Six bits is 64 buckets for 200 keys: it must fill and then fail.
-		err := newTable(6, split).fold(body.Bytes(), true, 0)
+		err := newTable(6, split).fold(body.Bytes(), kernelRow, true, 0)
 		if err == nil {
 			t.Fatalf("split=%v: a 64-bucket table accepted 200 stations", split)
 		}

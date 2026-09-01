@@ -92,14 +92,34 @@ func (t *table) merge(i int, v int32) {
 
 // fold aggregates every row in data, which must begin at a row boundary and end immediately after a '\n'.
 //
-// The loop is in two halves for one reason: the branchless parse and the SWAR scan both load 8 bytes past where they are looking, so they may only run while a whole row plus that over-fetch is still inside data. The tail is at most a couple of rows per buffer and runs the never-over-reading scalar path, which is what removes any need for padded buffers or a guard page.
-// base is the absolute file offset of data[0], used only to name the offending byte if a row is malformed.
-func (t *table) fold(data []byte, fastParse bool, base int64) error {
+// Every kernel here over-reads 8 bytes, so each stops early and foldTail's scalar path closes the rest without ever over-reading: that is what removes any need for padded buffers or a guard page.
+// The kernel is chosen ONCE per buffer, because a per-row switch would charge every arm for the comparison the batch arms exist to remove.
+func (t *table) fold(data []byte, k kernel, fastParse bool, base int64) error {
+	var (
+		pos int
+		err error
+	)
+	switch k {
+	case kernelBatchSWAR:
+		pos, err = t.foldBatchSWAR(data, base)
+	case kernelBatchNEON:
+		pos, err = t.foldBatchNEON(data, base)
+	default:
+		pos, err = t.foldRows(data, fastParse, base)
+	}
+	if err != nil {
+		return err
+	}
+	return t.foldTail(data, pos, base)
+}
+
+// foldRows is v1's per-row kernel: rescan from each row's first byte, one separator search and one parse per row.
+func (t *table) foldRows(data []byte, fastParse bool, base int64) (int, error) {
 	pos := 0
 	for pos+maxRow <= len(data) {
 		sep, semi := indexDelim(data[pos:])
 		if sep < 0 || !semi {
-			return rowError(base+int64(pos), data[pos:])
+			return 0, rowError(base+int64(pos), data[pos:])
 		}
 		if pos+sep+9 > len(data) {
 			break
@@ -112,21 +132,26 @@ func (t *table) fold(data []byte, fastParse bool, base int64) error {
 		if fastParse {
 			v, next = parseTempBranchless(field)
 			if next == 0 || !validTemp(field, next) || !inRange(v) {
-				return rowError(base+int64(pos), data[pos:])
+				return 0, rowError(base+int64(pos), data[pos:])
 			}
 		} else {
 			var ok bool
 			v, next, ok = parseTempScalar(field)
 			if !ok || !inRange(v) {
-				return rowError(base+int64(pos), data[pos:])
+				return 0, rowError(base+int64(pos), data[pos:])
 			}
 		}
 		name := data[pos : pos+sep]
 		if !t.update(hashWord(binary.LittleEndian.Uint64(data[pos:]), sep), name, v) {
-			return t.fullError(base + int64(pos))
+			return 0, t.fullError(base + int64(pos))
 		}
 		pos += sep + 1 + next
 	}
+	return pos, nil
+}
+
+// foldTail closes the rows a kernel stopped short of, with the scalar path that never over-reads.
+func (t *table) foldTail(data []byte, pos int, base int64) error {
 	for pos < len(data) {
 		sep, semi := indexDelim(data[pos:])
 		if sep < 0 || !semi {

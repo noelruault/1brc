@@ -30,6 +30,7 @@ type config struct {
 	Table   string
 	IO      string
 	Parse   string
+	Kernel  string
 	Madvise bool
 }
 
@@ -46,6 +47,14 @@ func aggregateFile(path string, cfg config) (map[string]*gen.Accumulator, error)
 	fastParse, err := parseMode(cfg.Parse)
 	if err != nil {
 		return nil, err
+	}
+	kern, err := kernelMode(cfg.Kernel)
+	if err != nil {
+		return nil, err
+	}
+	// A batch kernel always parses branchlessly, so pairing it with -parse scalar would silently measure something other than what the flags say.
+	if kern != kernelRow && !fastParse {
+		return nil, fmt.Errorf("-kernel %s has no scalar parse arm; use -kernel row with -parse scalar", cfg.Kernel)
 	}
 
 	f, err := os.Open(path)
@@ -145,9 +154,9 @@ func aggregateFile(path string, cfg config) (map[string]*gen.Accumulator, error)
 				}
 				var err error
 				if mapped != nil {
-					err = foldMapped(t, mapped, lo, hi, fastParse)
+					err = foldMapped(t, mapped, lo, hi, kern, fastParse)
 				} else {
-					err = foldRange(f, t, lo, hi, size, buf, fastParse)
+					err = foldRange(f, t, lo, hi, size, buf, kern, fastParse)
 				}
 				if err != nil {
 					errs[w] = err
@@ -197,7 +206,7 @@ func requireTrailingNewline(f *os.File, size int64) error {
 // foldRange reads [lo,hi) in buffer-sized chunks, carrying the partial row at the end of each chunk into the front of the next, and folds the row that straddles hi by reading up to maxRow bytes past it.
 //
 // A range that does not start at 0 starts reading ONE BYTE EARLY. That byte is what distinguishes "lo is in the middle of a row, skip to the next boundary" from "lo IS a boundary, keep the row that starts there"; without it the second case silently drops one row per aligned boundary, which is one row in every fourteen boundaries on the official key set.
-func foldRange(f *os.File, t *table, lo, hi, size int64, buf []byte, fastParse bool) error {
+func foldRange(f *os.File, t *table, lo, hi, size int64, buf []byte, k kernel, fastParse bool) error {
 	readEnd := min(hi+maxRow, size)
 	readStart := lo
 	if lo > 0 {
@@ -234,14 +243,14 @@ func foldRange(f *os.File, t *table, lo, hi, size int64, buf []byte, fastParse b
 		if base+int64(avail) >= hi {
 			// The straddling row may still be incomplete when the buffer is no bigger than the range; in that case fall through, fold the whole rows, and read the rest of it next time round.
 			if end, ok := rangeEnd(buf[:avail], base, hi, from); ok {
-				return t.fold(buf[from:end], fastParse, base+int64(from))
+				return t.fold(buf[from:end], k, fastParse, base+int64(from))
 			}
 		}
 		nl := bytes.LastIndexByte(buf[:avail], '\n')
 		if nl < from {
 			return fmt.Errorf("byte %d: row longer than the %d-byte buffer", base, len(buf))
 		}
-		if err := t.fold(buf[from:nl+1], fastParse, base+int64(from)); err != nil {
+		if err := t.fold(buf[from:nl+1], k, fastParse, base+int64(from)); err != nil {
 			return err
 		}
 		carry = copy(buf, buf[nl+1:avail])
@@ -250,7 +259,7 @@ func foldRange(f *os.File, t *table, lo, hi, size int64, buf []byte, fastParse b
 }
 
 // foldMapped is foldRange over a mapping: the same ownership rule, no copy, no buffer, and the same one-byte lookback so that a range starting exactly on a row boundary keeps that row.
-func foldMapped(t *table, data []byte, lo, hi int64, fastParse bool) error {
+func foldMapped(t *table, data []byte, lo, hi int64, k kernel, fastParse bool) error {
 	from := 0
 	if lo > 0 {
 		back := lo - 1
@@ -267,7 +276,7 @@ func foldMapped(t *table, data []byte, lo, hi int64, fastParse bool) error {
 	if !ok {
 		return fmt.Errorf("byte %d: no row boundary at or after the end of the range", hi)
 	}
-	return t.fold(data[from:end], fastParse, int64(from))
+	return t.fold(data[from:end], k, fastParse, int64(from))
 }
 
 // rangeEnd returns the index just past the last row this range owns: the first '\n' at or after hi-1, because a row ending exactly at hi-1 is the last one that STARTS before hi.

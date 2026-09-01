@@ -9,5 +9,6 @@ func NEONIndexSemicolon(b []byte) int
 // neonTransferProbe reads the first 16 bytes of b and returns the narrowed compare mask. It requires len(b) >= 16.
 func neonTransferProbe(b []byte) uint64
 
-// neonDelimMask32 compares 32 bytes of b against ';' and '\n' at once, returning a 2-bits-per-byte syndrome for each: lane k sets bit 2k. It requires len(b) >= 32.
-func neonDelimMask32(b []byte) (semi, nl uint64)
+// DelimMask32 compares 32 bytes of b against ';' and '\n' at once, returning a 2-bits-per-byte syndrome for each: lane k sets bit 2k. It requires len(b) >= 32.
+// Exported because 1brc/code/go's batch kernel calls it: the binary and this module's correctness tests must exercise the SAME assembly, not two copies of it.
+func DelimMask32(b []byte) (semi, nl uint64)
