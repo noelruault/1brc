@@ -294,3 +294,66 @@ experiment: missing /nonexistent/measurements-1b.txt (regenerate with the comman
 
     Both incumbent arms carry no flags on purpose: -buf defaults to 4096 KiB and -workers to
     runtime.NumCPU(), which is 15 on this machine, so "buf4M" and "workers15" ARE the default binary.
+
+==============================================================================
+go-opt-round-1 — invocations F to K, the experiment.sh commands that produced them
+==============================================================================
+
+Raw output, provenance (commit, go version, machine, hyperfine version, power, load) and the per-arm
+timed command are inside each bench file; recorded here is the invocation that WROTE each one, which
+the bench file does not itself carry. Every one ran from the repo root. F, G, H, I and J predate the
+cooldown fix and their files carry no cooldown line; K is the first slot-corrected invocation.
+
+F  bench/2026-09-01T163010Z-queue-item-6-more-workers-than-cores.txt
+   bash 1brc/scripts/experiment.sh -i 'queue item 6 - more workers than cores' \
+     -p 'if part of the idle 25% is read stall, oversubscription hides it: 3-8%' \
+     -a 'workers15=' -a 'workers20=-workers 20' -a 'workers30=-workers 30'
+
+G  bench/2026-09-01T163101Z-queue-item-7-buffers-above-4-MiB.txt
+   bash 1brc/scripts/experiment.sh -i 'queue item 7 - buffers above 4 MiB' \
+     -p 'sweep: 4 MiB beat 1 MiB by 2.8% at 1b, 8 and 16 MiB untried at that scale' \
+     -a 'buf4M=' -a 'buf8M=-buf 8192' -a 'buf16M=-buf 16384'
+
+H  bench/2026-09-01T163244Z-E-14-the-two-kept-knobs-in-combination.txt
+   bash 1brc/scripts/experiment.sh -i 'E-14 - the two kept knobs in combination' \
+     -p 'E-12 gave 10.02% and E-13 8.64% in separate invocations; if they are independent the pair is worth ~17.8% against the same-invocation incumbent' \
+     -a 'default=' -a 'w20=-workers 20' -a 'buf8M=-buf 8192' -a 'w20buf8M=-workers 20 -buf 8192'
+
+I  bench/2026-09-01T163352Z-E-15-the-same-four-arms-reversed-order.txt
+   bash 1brc/scripts/experiment.sh -i 'E-15 - the same four arms, reversed order' \
+     -p 'E-13 and E-14 disagree by 20.6 points on -buf 8192; if arm ORDER within one hyperfine invocation is the confound, reversing it moves the winner by at least 8%' \
+     -a 'w20buf8M=-workers 20 -buf 8192' -a 'buf8M=-buf 8192' -a 'w20=-workers 20' -a 'default='
+
+J  bench/2026-09-01T163525Z-E-16-the-null-experiment-eight-identical-arms.txt
+   bash 1brc/scripts/experiment.sh -i 'E-16 - the null experiment: eight identical arms' \
+     -p 'E-14 and E-15 rank by slot, not by configuration; eight arms of the SAME binary with the SAME flags will spread by more than 8%, the size of every verdict in this queue' \
+     -a 'slot1=' -a 'slot2=' -a 'slot3=' -a 'slot4=' -a 'slot5=' -a 'slot6=' -a 'slot7=' -a 'slot8='
+
+K  bench/2026-09-01T164052Z-E-17-the-two-knobs-re-measured-with-a-20-s-cooldown-incumbent-at-both-ends.txt
+   bash 1brc/scripts/experiment.sh -c 20 -r 4 -i 'E-17 - the two knobs re-measured with a 20 s cooldown, incumbent at both ends' \
+     -p 'E-16 measured 0.0302 s of drift per slot with no cooldown; if 20 s of idle restores the machine, the two default arms bracketing this invocation land within 1% of each other and the knobs can be ranked' \
+     -a 'default.a=' -a 'w20=-workers 20' -a 'buf8M=-buf 8192' -a 'default.b='
+   measured wall clock of the invocation itself: 7 m 17.57 s for 4 arms x 5 executions (`time`), i.e. ~21.9 s per execution against ~1.7 s of work.
+
+Arithmetic in the E-12 to E-18 rows, evaluated rather than written by hand:
+
+  $ python3 -c "d=lambda b,n:(b-n)/b*100; print('%.2f %.2f %.2f'%(d(1.656,1.490),d(1.841,1.682),d(1.715,1.921)))"
+  10.02 8.64 -12.01
+  $ python3 -c "
+  s=[1.660,1.690,1.745,1.772,1.796,1.811,1.841,2.010]; u=[18.816,19.317,19.972,20.495,20.748,20.958,21.554,21.948]
+  print('null spread %.2f%%  user CPU %.2f%%  step %.4f s'%((s[7]-s[0])/s[0]*100,(u[7]-u[0])/u[0]*100,(s[6]-s[0])/6))"
+  null spread 21.08%  user CPU 16.65%  step 0.0302 s
+  $ python3 -c "
+  a,b=1.729,1.773; st=(b-a)/3; e2,e3=a+st,a+2*st
+  print('bracket %.2f%%  w20 %.2f%%  buf8M %.2f%%'%((b-a)/a*100,(1.613-e2)/e2*100,(1.812-e3)/e3*100))"
+  bracket 2.54%  w20 -7.49%  buf8M 3.05%
+  $ python3 -c "
+  base=1.667; st=0.0302
+  for n,sl,m in [('cursor',2,2.017),('split',3,1.743),('scalar',4,1.857),('buf1M',5,1.713),('bits14',6,1.787),('pagecache',7,1.759)]:
+      print('%-10s raw %+6.2f%%  slot-adjusted %+6.2f%%'%(n,(m-base)/base*100,(m-(sl-1)*st-base)/base*100))"
+  cursor     raw +21.00%  slot-adjusted +19.18%
+  split      raw  +4.56%  slot-adjusted  +0.94%
+  scalar     raw +11.40%  slot-adjusted  +5.96%
+  buf1M      raw  +2.76%  slot-adjusted  -4.49%
+  bits14     raw  +7.20%  slot-adjusted  -1.86%
+  pagecache  raw  +5.52%  slot-adjusted  -5.35%

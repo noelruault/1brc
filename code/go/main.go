@@ -1,6 +1,6 @@
 // Command 1brc aggregates a 1BRC measurements file into min/mean/max per station.
 //
-// v1: one goroutine per core, each owning byte ranges of the file, each folding into its own open-addressing table, merged once at the end. The strategy flags exist because 03-technique-recon.md left four hypotheses open and this binary is where they are measured; the defaults are what the measurements picked.
+// v1: more goroutines than cores (E-17), each owning byte ranges of the file, each folding into its own open-addressing table, merged once at the end. The strategy flags exist because 03-technique-recon.md left four hypotheses open and this binary is where they are measured; the defaults are what the measurements picked.
 package main
 
 import (
