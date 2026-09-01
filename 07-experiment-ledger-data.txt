@@ -640,3 +640,113 @@ Wiring proof for the new -parse default, same reason as -buf above:
   $ ARM="-kernel batch-swar -parse branchless" bash 1brc/scripts/check-correctness.sh
   check-correctness: OK   measurements-10m.txt (413 stations, 0s) [-kernel batch-swar -parse branchless]
   check-correctness: OK   measurements-10k-stations-10m.txt (10000 stations, 0s) [-kernel batch-swar -parse branchless]
+
+== §P: the re-profile queue items 1 and 5 owed, and the share it falsified ======
+
+Run before anything was built, on the shipped default, three runs of the same
+configuration on the 1b file. AC power, load average 1.59 at the start.
+
+  $ for i in 1 2 3; do /usr/bin/time -l ./1brc/code/go/bin/1brc \
+      -in $ASSETS/measurements-1b.txt -cpuprofile /tmp/1brc-prof-$i.out > /dev/null; done
+
+        1.83 real        17.16 user         1.63 sys
+        1.52 real        17.30 user         1.52 sys
+        1.62 real        17.39 user         1.56 sys
+
+  mean user CPU = (17.16 + 17.30 + 17.39) / 3 = 17.283 s
+
+E-25 derived the incumbent's user CPU at 17.279 s without measuring it; this is
+that derivation confirmed to 0.02%.  Run 1 is the first-touch outlier the
+-phases sets show too, so the profiles below are runs 2 and 3.
+
+  $ go tool pprof -top -nodecount=18 bin/1brc /tmp/1brc-prof-2.out
+  Duration: 1.52s, Total samples = 13.90s (915.60%)
+       7.51s 54.03%  syscall.rawsyscalln
+       2.83s 20.36%  main.indexDelim              (cum 2.89s 20.79%)
+       1.13s  8.13%  main.parseTempWord           (cum 1.41s 10.14%)
+       0.79s  5.68%  main.(*table).update         (cum 1.38s  9.93%)
+       0.56s  4.03%  main.(*table).foldRows       (cum 6.36s 45.76%)
+       0.46s  3.31%  runtime.memequal
+       0.40s  2.88%  encoding/binary.littleEndian.Uint64 (inline)
+       0.13s  0.94%  main.(*table).merge (inline)
+
+  $ go tool pprof -top -nodecount=18 bin/1brc /tmp/1brc-prof-3.out
+  Duration: 1.61s, Total samples = 13.82s (855.80%)
+       7.83s 56.66%  syscall.rawsyscalln
+       2.45s 17.73%  main.indexDelim              (cum 2.50s 18.09%)
+       1.30s  9.41%  main.parseTempWord           (cum 1.61s 11.65%)
+       0.74s  5.35%  main.(*table).update         (cum 1.38s  9.99%)
+       0.52s  3.76%  runtime.memequal
+       0.40s  2.89%  main.(*table).foldRows       (cum 5.93s 42.91%)
+       0.35s  2.53%  encoding/binary.littleEndian.Uint64 (inline)
+       0.12s  0.87%  main.(*table).merge (inline)
+
+indexDelim at 17.73-20.36% is nothing like the 35.9% the board carried, so the
+next run isolates the cause: the SAME binary at E-21's buffer.
+
+  $ /usr/bin/time -l ./bin/1brc -in $ASSETS/measurements-1b.txt -buf 4096 \
+      -cpuprofile /tmp/1brc-prof4m-2.out > /dev/null
+        1.66 real        17.30 user         2.11 sys
+
+  Duration: 1.66s, Total samples = 12.25s (739.97%)
+       3.83s 31.27%  main.indexDelim              (cum 3.93s 32.08%)
+       2.88s 23.51%  syscall.rawsyscalln
+       2.03s 16.57%  main.parseTempWord           (cum 2.48s 20.24%)
+       1.10s  8.98%  main.(*table).update         (cum 2.03s 16.57%)
+       0.72s  5.88%  runtime.memequal
+       0.62s  5.06%  main.(*table).foldRows       (cum 9.29s 75.84%)
+       0.58s  4.73%  encoding/binary.littleEndian.Uint64 (inline)
+       0.19s  1.55%  main.(*table).merge (inline)
+
+Same binary, same file, one flag: indexDelim 17.73-20.36% -> 31.27% and the
+syscall 54.03-56.66% -> 23.51%.  The function did not change; the denominator
+did, because E-24 moved the default read buffer 4 MiB -> 1 MiB after E-21 was
+taken.  Shares of the non-syscall samples are stable across both settings:
+
+  $ python3 - <<'PY'
+  rows = [('E-21 (4 MiB, branchless)', 14.20, 0.157*14.20, 0.335*14.20),
+          ('now, 4 MiB, run 2',        12.25, 2.88,        3.83),
+          ('now, 1 MiB, run 2',        13.90, 7.51,        2.83),
+          ('now, 1 MiB, run 3',        13.82, 7.83,        2.45)]
+  for name, tot, sysc, idx in rows:
+      comp = tot - sysc
+      print(f'{name:26s} indexDelim {100*idx/tot:5.2f}% of total, {100*idx/comp:5.2f}% of compute')
+  PY
+  E-21 (4 MiB, branchless)   indexDelim 33.50% of total, 39.74% of compute
+  now, 4 MiB, run 2          indexDelim 31.27% of total, 40.88% of compute
+  now, 1 MiB, run 2          indexDelim 20.36% of total, 44.29% of compute
+  now, 1 MiB, run 3          indexDelim 17.73% of total, 40.90% of compute
+
+  40.9-44.3% of 17.283 s of measured user CPU = 7.07-7.66 s.
+
+Why the compute denominator is the honest one, and not a convenience: the
+syscall bucket holds 7.51 s of samples in a run whose whole measured SYSTEM
+time is 1.52 s, so at most a fifth of it can be time spent in the kernel.  The
+rest is misattribution.  E-21 measured pprof under-counting total CPU by 24.6%
+here and left the cause open; darwin profiling Go with a process-wide
+setitimer(ITIMER_PROF), whose SIGPROF lands on whichever thread the kernel
+picks including one parked in pread, is the standing suspect and is a
+HYPOTHESIS, not verified.
+
+What queue item 1 can actually remove, attributed rather than assumed.  The
+fuse does not remove the scan; it removes the SECOND load of the word the scan
+already had, which is foldRows's own inlined Uint64:
+
+  $ go tool pprof -peek 'littleEndian.Uint64' bin/1brc /tmp/1brc-prof-2.out
+                    0.23s 57.50% |   main.parseTempWord (inline)
+                    0.11s 27.50% |   main.(*table).foldRows (inline)
+                    0.06s 15.00% |   main.indexDelim (inline)
+       0.40s  2.88%                | encoding/binary.littleEndian.Uint64
+
+  $ go tool pprof -peek 'littleEndian.Uint64' bin/1brc /tmp/1brc-prof4m-2.out
+                    0.38s 65.52% |   main.parseTempWord (inline)
+                    0.10s 17.24% |   main.(*table).foldRows (inline)
+                    0.10s 17.24% |   main.indexDelim (inline)
+       0.58s  4.73%                | encoding/binary.littleEndian.Uint64
+
+  1 MiB: 0.11 / (13.90 - 7.51) = 1.72% of compute
+  4 MiB: 0.10 / (12.25 - 2.88) = 1.07% of compute
+
+That is item 1's ceiling, 1.07-1.72% of compute, not indexDelim's 40%.  Item 5
+targets foldRows's own flat time, 0.56/6.39 = 8.76%, 0.40/5.99 = 6.68% and
+0.62/9.37 = 6.62% of compute across the three profiles.

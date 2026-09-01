@@ -1,0 +1,22 @@
+# experiment 2026-09-01T220012Z
+hypothesis: queue items 1 and 5 - the name hash fused into the separator scan, and the fold walked with unsafe.Add
+prediction: a re-profile prices item 1 at foldRows own littleEndian.Uint64, 1.07-1.72% of non-syscall samples, NOT indexDelim 40%: so hash 0-1.5% of wall and expected INSIDE the bracket, ptr 1-4% against foldRows 6.6-8.8% flat, both sub-additive at 1-5%. Keep bar pre-registered: disjoint from BOTH bracket arms or it is not kept.
+file:     measurements-1b.txt   runs: 5   warmup: 1   cooldown: 20s
+commit:   e30bc9ab00cad5bda1b576a7ddb503791f77004d
+go:       go version go1.27.0 darwin/arm64
+machine:  Apple M5 Pro, hw.ncpu 15, 24 GiB, 26.5.2 arm64
+hyperfine: hyperfine 1.20.0
+power:    'AC Power' 	100%; charged; 0:00 remaining present: true
+load:      0:00  up 1 day, 14:19, 22 users, load averages: 1.38 1.80 1.94
+
+$ incumbent.a: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+$ hash: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -fold hash > /dev/null
+$ ptr: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -fold ptr > /dev/null
+$ both: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -fold both > /dev/null
+$ incumbent.b: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+
+Benchmark 1: incumbent.a
+  Time (mean ± σ):      1.398 s ±  0.005 s    [User: 17.013 s, System: 1.545 s]
+  Range (min … max):    1.391 s …  1.404 s    5 runs
+ 
+Benchmark 2: hash
