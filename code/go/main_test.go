@@ -19,7 +19,7 @@ import (
 // They used to be restated and drifted: `branchless` stayed here after E-25 made `word` the default, so the two range-boundary sweeps — the only tests that find a byte-offset off-by-one — ran a parse the binary does not.
 // Workers, buffer and bits stay small on purpose: those are about test speed, not about the shipped shape.
 func defaults() config {
-	return config{Workers: 4, BufKiB: 4096, SegKiB: 2048, Bits: 12, NoCache: false, Split: "static", Table: "combined", IO: "pread", Parse: defaultParse, Kernel: "row", Fold: defaultFold}
+	return config{Workers: 4, BufKiB: 4096, SegKiB: 2048, Bits: 12, NoCache: false, Split: "static", Table: "combined", IO: "pread", Parse: defaultParse, Kernel: "row", Fold: defaultFold, Fill: defaultFill}
 }
 
 // strategies is every combination of the four open hypotheses' flags. Correctness must hold for all of them or a benchmark of one arm is measuring a bug.
@@ -46,6 +46,14 @@ func strategies() []config {
 					c.Split, c.Table, c.IO, c.Parse, c.Fold = split, layout, io, "word", fold
 					out = append(out, c)
 				}
+				// The staged readers replace foldRange, so they are swept as their own arms; mmap has no read to stage and aggregateFile refuses the pair.
+				if io == "pread" {
+					for _, fill := range []string{"sync", "ahead"} {
+						c := defaults()
+						c.Split, c.Table, c.IO, c.Fill = split, layout, io, fill
+						out = append(out, c)
+					}
+				}
 			}
 		}
 	}
@@ -53,7 +61,7 @@ func strategies() []config {
 }
 
 func (c config) label() string {
-	return fmt.Sprintf("%s/%s/%s/%s/%s/%s", c.Split, c.Table, c.IO, c.Parse, c.Kernel, c.Fold)
+	return fmt.Sprintf("%s/%s/%s/%s/%s/%s/fill=%s", c.Split, c.Table, c.IO, c.Parse, c.Kernel, c.Fold, c.Fill)
 }
 
 // TestRunMatchesTheReferenceByteForByte is the whole correctness contract in miniature:
@@ -104,20 +112,27 @@ func TestEveryRangeBoundaryIsFoldedExactlyOnce(t *testing.T) {
 		for _, bufKiB := range []int{1, 2, 7, 64} {
 			for _, split := range []string{"static", "cursor"} {
 				for _, io := range []string{"pread", "mmap"} {
+					// The staged readers own the same byte-offset arithmetic as foldRange and get it from a separate loop, so they are swept here or the four traps are only guarded on one of the two. mmap refuses -fill, so it stays on the unstaged arm.
+					fills := []string{"off"}
+					if io == "pread" {
+						fills = append(fills, "sync", "ahead")
+					}
 					// Both row loops, because they compute the row's address differently and this sweep is the only test that finds a byte-offset off-by-one. `hash` and `both` share these two loops, so two arms cover four.
 					for _, fold := range []string{"slice", "ptr"} {
-						cfg := defaults()
-						cfg.Workers, cfg.BufKiB, cfg.SegKiB, cfg.Split, cfg.IO, cfg.Fold = workers, bufKiB, bufKiB, split, io, fold
-						name := fmt.Sprintf("%s/%s/%s/workers=%d/buf=%dKiB", split, io, fold, workers, bufKiB)
-						t.Run(name, func(t *testing.T) {
-							var got bytes.Buffer
-							if err := run(path, cfg, &got); err != nil {
-								t.Fatal(err)
-							}
-							if got.String() != want {
-								t.Fatalf("%s: output differs from the reference", name)
-							}
-						})
+						for _, fill := range fills {
+							cfg := defaults()
+							cfg.Workers, cfg.BufKiB, cfg.SegKiB, cfg.Split, cfg.IO, cfg.Fold, cfg.Fill = workers, bufKiB, bufKiB, split, io, fold, fill
+							name := fmt.Sprintf("%s/%s/%s/fill=%s/workers=%d/buf=%dKiB", split, io, fold, fill, workers, bufKiB)
+							t.Run(name, func(t *testing.T) {
+								var got bytes.Buffer
+								if err := run(path, cfg, &got); err != nil {
+									t.Fatal(err)
+								}
+								if got.String() != want {
+									t.Fatalf("%s: output differs from the reference", name)
+								}
+							})
+						}
 					}
 				}
 			}
@@ -136,18 +151,24 @@ func TestARangeShorterThanARowOwnsNothing(t *testing.T) {
 	for _, workers := range []int{11, 40, 200, 1000} {
 		for _, split := range []string{"static", "cursor"} {
 			for _, io := range []string{"pread", "mmap"} {
-				cfg := defaults()
-				cfg.Workers, cfg.Split, cfg.IO, cfg.BufKiB, cfg.SegKiB = workers, split, io, 1, 1
-				name := fmt.Sprintf("%s/%s/workers=%d", split, io, workers)
-				t.Run(name, func(t *testing.T) {
-					var got bytes.Buffer
-					if err := run(path, cfg, &got); err != nil {
-						t.Fatal(err)
-					}
-					if got.String() != want {
-						t.Fatalf("%s:\n got: %s\nwant: %s", name, got.String(), want)
-					}
-				})
+				fills := []string{"off"}
+				if io == "pread" {
+					fills = append(fills, "sync", "ahead")
+				}
+				for _, fill := range fills {
+					cfg := defaults()
+					cfg.Workers, cfg.Split, cfg.IO, cfg.BufKiB, cfg.SegKiB, cfg.Fill = workers, split, io, 1, 1, fill
+					name := fmt.Sprintf("%s/%s/fill=%s/workers=%d", split, io, fill, workers)
+					t.Run(name, func(t *testing.T) {
+						var got bytes.Buffer
+						if err := run(path, cfg, &got); err != nil {
+							t.Fatal(err)
+						}
+						if got.String() != want {
+							t.Fatalf("%s:\n got: %s\nwant: %s", name, got.String(), want)
+						}
+					})
+				}
 			}
 		}
 	}
@@ -456,6 +477,17 @@ func TestRunReportsBadInput(t *testing.T) {
 		{Workers: 1, BufKiB: 4096, Parse: "scalar", IO: "pread", Split: "vibes"},
 		{Workers: 1, BufKiB: 4096, Parse: "scalar", IO: "pread", Split: "cursor", SegKiB: 0},
 	} {
+		if err := run(writeFile(t, "Hamburg;12.0\n"), bad, &bytes.Buffer{}); err == nil {
+			t.Fatalf("%+v was accepted", bad)
+		}
+	}
+
+	// These two start from a valid config and change ONE field, because every case above leaves -kernel empty and is rejected by that check whatever else is wrong with it.
+	unknownFill, mappedFill := defaults(), defaults()
+	unknownFill.Fill = "eventually"
+	// A mapping has no read to stage: accepting this would time foldMapped and publish it as H-14's arm.
+	mappedFill.IO, mappedFill.Fill = "mmap", "ahead"
+	for _, bad := range []config{unknownFill, mappedFill} {
 		if err := run(writeFile(t, "Hamburg;12.0\n"), bad, &bytes.Buffer{}); err == nil {
 			t.Fatalf("%+v was accepted", bad)
 		}

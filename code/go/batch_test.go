@@ -214,7 +214,7 @@ func TestBatchKernelsHandOffToTheTailExactlyOnce(t *testing.T) {
 // TestBatchKernelRejectsAScalarParse pins the flag combination that would otherwise measure the wrong thing: a batch arm always parses branchlessly, so -parse scalar with it is a lie the benchmark would record as a result.
 func TestBatchKernelRejectsAScalarParse(t *testing.T) {
 	for _, name := range []string{"batch-swar", "batch-neon"} {
-		cfg := config{Workers: 1, BufKiB: 1024, Bits: 12, Split: "static", Table: "combined", IO: "pread", Parse: "scalar", Kernel: name, Fold: "slice"}
+		cfg := config{Workers: 1, BufKiB: 1024, Bits: 12, Split: "static", Table: "combined", IO: "pread", Parse: "scalar", Kernel: name, Fold: "slice", Fill: defaultFill}
 		_, err := aggregateFile("does-not-matter", cfg)
 		if err == nil || !strings.Contains(err.Error(), "no scalar parse arm") {
 			t.Fatalf("-kernel %s -parse scalar: got %v, want the no-scalar-arm error", name, err)

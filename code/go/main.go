@@ -29,6 +29,7 @@ func main() {
 	flag.StringVar(&cfg.Parse, "parse", defaultParse, "temperature parse and format check: branchless | scalar (H3) | word (E-25)")
 	flag.StringVar(&cfg.Kernel, "kernel", "row", "tokenizer: row | batch-swar | batch-neon (go-v2-kernels)")
 	flag.StringVar(&cfg.Fold, "fold", defaultFold, "row loop: slice | hash | ptr | both (queue items 1 and 5)")
+	flag.StringVar(&cfg.Fill, "fill", defaultFill, "read staging: off | sync | ahead (H-14, -io pread only)")
 	flag.BoolVar(&cfg.Madvise, "madvise", false, "MADV_WILLNEED the whole mapping first (-io mmap only, H7's rescue)")
 	cpuprofile := flag.String("cpuprofile", "", "write a pprof CPU profile here (go-opt-round-2)")
 	flag.BoolVar(&phasesOn, "phases", false, "report the read/fold/merge split and the shard skew on stderr (go-opt-round-2)")
@@ -73,6 +74,9 @@ const defaultParse = "word"
 // defaultFold is the pointer walk on E-27's measurement: 1.233 s against 1.398 s and 1.399 s for the two bracket arms, disjoint, with user CPU 13.49% lower for byte-identical output.
 // It is `ptr` and not `both` because the fuse did not separate from it, and the pre-registered bar was disjoint-or-not-kept; `slice` remains the arm it was measured against.
 const defaultFold = "ptr"
+
+// defaultFill is the unstaged reader until H-14's arm is measured against it: `off` is `foldRange`, the loop every published number on this board was taken on.
+const defaultFill = "off"
 
 func run(path string, cfg config, out io.Writer) error {
 	stations, err := aggregateFile(path, cfg)
