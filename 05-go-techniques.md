@@ -20,7 +20,7 @@ Those are facts about their hardware and are never compared against our wall clo
 
 - **benhoyt r9/r10** put the whole hot loop in one function per shard: split the file into one contiguous range per goroutine, read it in 1 MiB chunks with a carried-over remainder (`bytes.LastIndexByte(chunk, '\n')`, then `copy(buf, remaining)`), aggregate into a **1<<17 linearly-probed open-addressing table** private to the goroutine, and merge into a `map` only at the end. r10 adds SWAR semicolon-finding and hashes **only the first 8 bytes** of the name, resolving collisions with a full `bytes.Equal`. That is the same prefix-hash design H4 asks about, shipped by someone else, and it is the single most transplantable thing in the corpus.
 - **shraddhaag's** journey is the negative result: her final bottleneck was Go map access, and her own "further ideas" list is *encode station names as numeric keys, replace the map with a faster one*. Two independent Go implementations arriving at the map as the wall is worth more than either arriving there alone.
-- **automataIA's safe variant** is our I/O strategy, independently: `read_exact_at` (pread) over disjoint ranges, **one reusable 4 MiB buffer per worker**, one local map per worker, merge and sort at the end, nothing shared in the row loop. On Linux their mmap variant still wins, but by **11%**, not by the 5-9× margin mmap LOST by here on a scan (`02-baseline.md`). Their 4 MiB buffer is also a datapoint against our sweep, which only tried 1 MiB and 8 MiB.
+- **automataIA's safe variant** is our I/O strategy, independently: `read_exact_at` (pread) over disjoint ranges, **one reusable 4 MiB buffer per worker** [their size; ours is 1 MiB since E-24 swept it and measured 4 MiB at +6.56%], one local map per worker, merge and sort at the end, nothing shared in the row loop. On Linux their mmap variant still wins, but by **11%**, not by the 5-9× margin mmap LOST by here on a scan (`02-baseline.md`). Their 4 MiB buffer is also a datapoint against our sweep, which only tried 1 MiB and 8 MiB.
 
 ## The hash table costs more than the parse, and Go's own map is not the worst option
 
@@ -103,7 +103,7 @@ Every bullet after the first is a **projection across benchmark shapes**, which 
 | decision | what to build | why, and how strong |
 |---|---|---|
 | I/O | 15 goroutines, disjoint ranges, `pread` with `F_NOCACHE`, reusable per-worker buffer | measured winner in `02-baseline.md`; independently the shape `automataIA/1brc-rs`'s safe variant uses |
-| buffer size | try 4 MiB alongside 1 MiB | their choice; our sweep only covered 1 and 8 MiB |
+| buffer size | try 4 MiB alongside 1 MiB | their choice; our sweep only covered 1 and 8 MiB. **ANSWERED by E-24: swept at 1b, 1 MiB wins and 4 MiB is +6.56%** |
 | table | per-shard open addressing, 8-byte prefix hash, full `bytes.Equal` compare, ≤10% load factor | measured −15.8% against a Go map on 413; H4 says 8 bytes leave one collision in 413 |
 | 10k fallback | keep the Go map reachable by flag | measured: it WINS by 3.7% on 10k stations |
 | table layout | H5's split hash/entry arrays, now with a predicted mechanism (6.00 MiB probed array → 1 MiB) | hypothesis; the 10k gap is the evidence it is worth trying |

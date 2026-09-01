@@ -387,8 +387,9 @@ M  bench/2026-09-01T200150Z-queue-item-15-invocation-B-re-measured-with-the-cool
    That is NOT E-16's drift and the distinction is what makes the invocation void rather than
    correctable: E-16's signature is user CPU rising monotonically with slot, and here user CPU is flat
    and unordered while the entire excess sits in SYSTEM time. No per-slot constant describes it, so
-   nothing can be subtracted off. M's arms 2-7 are printed beside N's below: they disagree by up to 12
-   points, which is the evidence that M was contaminated throughout and not only in slot 1.
+   nothing can be subtracted off. M's arms 2-7 are printed beside N's below: they disagree by up to 11.85
+   points (pagecache, +12.04% against +0.19%, evaluated as 12.04-0.19=11.85), which is the evidence that
+   M was contaminated throughout and not only in slot 1.
 
 N  bench/2026-09-01T202421Z-queue-item-15-invocation-B-re-measured-with-a-sacrificial-lead-in-arm-absorbing-slot-1.txt
    bash 1brc/scripts/experiment.sh -i 'queue item 15 - invocation B re-measured, with a sacrificial lead-in arm absorbing slot 1' \

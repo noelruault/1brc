@@ -74,12 +74,12 @@ What this hands to `go-v1-parallel` is a **starting point and three hypotheses, 
 - **Start from** parallel `pread`, `F_NOCACHE`, 1 MiB buffers, 15 readers: the fastest scan measured here, 754.4 ms.
 - **H-io-1:** F_NOCACHE still beats the page cache end-to-end, with aggregation running. *Not yet measured.* The scan margin is 1.49x, which is large enough to expect it survives, and small enough that it might not.
 - **H-io-2:** mmap stays slower end-to-end. **mmap is NOT killed** — it lost a scan benchmark by 5-9x, which is a strong prior and not a discard. Its one plausible rescue is that a fault-driven reader may overlap aggregation differently than a `read()`-driven one, and `madvise(MADV_WILLNEED)` was never tried. It goes in the ledger as an alternative to measure, per `spec.md:50` item 6.
-- **H-io-3:** 1 MiB is at or near the optimum. Only 1 MiB and 8 MiB were measured (8 MiB is 1.39x worse); 64 KiB, 256 KiB and 4 MiB are unswept.
+- **H-io-3:** 1 MiB is at or near the optimum. Only 1 MiB and 8 MiB were measured (8 MiB is 1.39x worse); 64 KiB, 256 KiB and 4 MiB are unswept. **[CONFIRMED end-to-end by E-24, and worth noting how: this hypothesis was right, E-06 overrode it with a slot-biased invocation that made 4 MiB the default for six ledger rows, and the sweep that vindicated it (512 KiB +3.97%, 1 MiB, 2 MiB +4.44%, 4 MiB +6.56%) only happened because that invocation was re-run. A scan-harness prediction survived an end-to-end measurement that contradicted it.]**
 
 ## Threads left open
 
 - The mmap `workers=4` pessimum reproduces but is unexplained. Worth one experiment (`madvise(MADV_WILLNEED)`, or per-worker `mmap` of its own range instead of one shared mapping) before mmap is ruled out permanently rather than provisionally.
 - `F_NOCACHE` was measured on `read()`/`pread` only. Whether it helps or hurts an mmap-based reader is untested.
-- 1 MiB buffers beat 8 MiB by 1.39x; 64 KiB / 256 KiB / 4 MiB were not swept. The optimum inside that range is unknown, and it is cheap to find.
+- 1 MiB buffers beat 8 MiB by 1.39x; 64 KiB / 256 KiB / 4 MiB were not swept. The optimum inside that range is unknown, and it is cheap to find. **[CLOSED by E-24: swept end-to-end at 1b, and 1 MiB is the minimum — 512 KiB below it and 2 MiB above it both lose, disjoint.]**
 - Read bandwidth was measured with `read()` into a Go slice, which copies. Whether a `pread` into a hugepage-backed or pre-faulted buffer avoids any of the 1.075 s of system time is untested.
 - The whole-file scan rates assume the solution reads the file exactly once. Nothing here measures what happens when 15 shards each also write into a per-shard hash map, i.e. when the read competes with the aggregation for memory bandwidth. That is `go-v1-parallel`'s first measurement.
