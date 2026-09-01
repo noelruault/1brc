@@ -359,3 +359,364 @@ which run was picked.
 
   (worst = winner's slowest run, best = loser's fastest run, gap = best - worst,
    all ns/row; every gap is positive, which is the claim.)
+
+## The batch kernel was repaired after the run above, and re-measured
+
+Everything above measures the batch kernel as it was BEFORE commit 730d166. That
+kernel overwrote its pending separator on every ';' it drained, so it split a row
+at the LAST separator while every other kernel here splits at the first, which is
+gen.Aggregate's rule. Neither key set produces a name containing ';', so the
+corpus agreement tests passed either way and the benchmark measured a kernel that
+was wrong on an input class the corpus cannot express.
+
+The repair adds one predictable branch to the drain loop, so the batch figures
+above no longer describe the shipped code and are superseded here. Only
+TokenizeBatch changed: every other number in this file measures code the repair
+did not touch, which is why the run above stays the record for them.
+
+Two post-fix runs are reported rather than one. Run A re-measured only
+BenchmarkTokenize immediately after the repair; run B is the full suite. Both are
+quoted because they disagree about separation on the 10k pair, and picking the one
+that agreed would be choosing the answer.
+
+  # run A power/load
+  Now drawing from 'Battery Power'   15:47 load averages: 2.35 2.72 3.15  (before)
+  Now drawing from 'Battery Power'   15:50 load averages: 2.90 2.86 3.16  (after)
+  $ cd 1brc/code/asm && go test -run '^$' -bench BenchmarkTokenize -benchmem -benchtime 1s -count 10 ./...
+
+  # run B power/load
+  Now drawing from 'Battery Power'   15:54 load averages: 2.47 2.51 2.79  (before)
+  Now drawing from 'Battery Power'   15:58 load averages: 3.05 3.25 3.09  (after)
+  $ cd 1brc/code/asm && go test -count=1 -run '^$' -bench . -benchmem -benchtime 1s -count 10 ./...
+
+### batch against staged SWAR, both post-fix runs
+
+  (separation = loser's fastest run minus winner's slowest, over ten runs each)
+
+  run A  413   batch   6.253   staged-swar  10.490    -4.237 ns/row (-40.4%)   +4.166  disjoint
+  run A  10k   batch  15.110   staged-swar  13.280    +1.830 ns/row (+13.8%)   +1.650  disjoint
+  run B  413   batch   6.367   staged-swar  10.735    -4.367 ns/row (-40.7%)   +4.123  disjoint
+  run B  10k   batch  16.035   staged-swar  14.300    +1.735 ns/row (+12.1%)   -1.220  OVERLAP
+
+The 413 verdict holds in both runs, disjoint both times: the batch shape is worth
+about -40.5% on the official key set, against -42.3% measured before the repair.
+The 10k verdict holds in direction in both runs -- the batch shape LOSES on the
+long-name stress case -- but its ten runs overlap in run B, where staged-swar/10k
+threw a 16.620 outlier against a 14.300 median. So the 10k crossover is reported
+as a direction that reproduced twice, not as a separated margin.
+
+Run B is noisier than the original run overall: its worst full-range spread is
+22.2% (ParseTemp/scalar/413) against 15.6% before, and three of its ten pairs
+overlap. That is the machine, not the kernels, and it is why the unchanged
+kernels keep their numbers from the original run rather than being restated from
+a noisier one.
+
+### Run A raw output
+
+# power/load BEFORE
+Now drawing from 'Battery Power'
+15:52  up 1 day,  6:11, 17 users, load averages: 2.92 2.43 2.80
+goos: darwin
+goarch: arm64
+pkg: github.com/noelruault/research/1brc/code/asm
+cpu: Apple M5 Pro
+BenchmarkTokenize/scalar/413-15     	     170	   6954145 ns/op	1039.60 MB/s	        13.26 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/scalar/413-15     	     176	   6742961 ns/op	1072.16 MB/s	        12.86 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/scalar/413-15     	     176	   6795362 ns/op	1063.90 MB/s	        12.96 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/scalar/413-15     	     177	   6732392 ns/op	1073.85 MB/s	        12.84 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/scalar/413-15     	     176	   6775300 ns/op	1067.05 MB/s	        12.92 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/scalar/413-15     	     178	   6675253 ns/op	1083.04 MB/s	        12.73 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/scalar/413-15     	     178	   6690277 ns/op	1080.61 MB/s	        12.76 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/scalar/413-15     	     177	   6733983 ns/op	1073.59 MB/s	        12.84 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/scalar/413-15     	     176	   6757007 ns/op	1069.93 MB/s	        12.89 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/scalar/413-15     	     176	   6739634 ns/op	1072.69 MB/s	        12.85 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/scalar/10k-15     	      82	  12882231 ns/op	2324.58 MB/s	        24.57 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/scalar/10k-15     	      91	  12903700 ns/op	2320.71 MB/s	        24.61 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/scalar/10k-15     	      92	  12841921 ns/op	2331.88 MB/s	        24.49 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/scalar/10k-15     	      93	  12855518 ns/op	2329.41 MB/s	        24.52 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/scalar/10k-15     	      93	  12795783 ns/op	2340.29 MB/s	        24.41 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/scalar/10k-15     	      92	  12852402 ns/op	2329.98 MB/s	        24.51 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/scalar/10k-15     	      92	  12861351 ns/op	2328.35 MB/s	        24.53 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/scalar/10k-15     	      92	  12975899 ns/op	2307.80 MB/s	        24.75 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/scalar/10k-15     	      93	  12872717 ns/op	2326.30 MB/s	        24.55 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/scalar/10k-15     	      92	  12892872 ns/op	2322.66 MB/s	        24.59 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-swar/413-15         	     217	   5499626 ns/op	1314.55 MB/s	        10.49 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-swar/413-15         	     217	   5500628 ns/op	1314.31 MB/s	        10.49 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-swar/413-15         	     216	   5501830 ns/op	1314.03 MB/s	        10.49 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-swar/413-15         	     218	   5494085 ns/op	1315.88 MB/s	        10.48 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-swar/413-15         	     214	   5535483 ns/op	1306.04 MB/s	        10.56 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-swar/413-15         	     218	   5491588 ns/op	1316.48 MB/s	        10.47 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-swar/413-15         	     216	   5505739 ns/op	1313.09 MB/s	        10.50 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-swar/413-15         	     218	   5484508 ns/op	1318.18 MB/s	        10.46 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-swar/413-15         	     217	   5519448 ns/op	1309.83 MB/s	        10.53 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-swar/413-15         	     218	   5507139 ns/op	1312.76 MB/s	        10.50 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-swar/10k-15         	     170	   7004961 ns/op	4274.94 MB/s	        13.36 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-swar/10k-15         	     171	   6965922 ns/op	4298.90 MB/s	        13.29 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-swar/10k-15         	     172	   6946178 ns/op	4311.12 MB/s	        13.25 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-swar/10k-15         	     172	   6897466 ns/op	4341.56 MB/s	        13.16 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-swar/10k-15         	     174	   6917891 ns/op	4328.74 MB/s	        13.19 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-swar/10k-15         	     172	   6920028 ns/op	4327.41 MB/s	        13.20 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-swar/10k-15         	     172	   6955499 ns/op	4305.34 MB/s	        13.27 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-swar/10k-15         	     171	   6978270 ns/op	4291.29 MB/s	        13.31 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-swar/10k-15         	     171	   6978628 ns/op	4291.07 MB/s	        13.31 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-swar/10k-15         	     170	   6993801 ns/op	4281.76 MB/s	        13.34 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-neon/413-15         	     192	   6247927 ns/op	1157.11 MB/s	        11.92 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-neon/413-15         	     190	   6260697 ns/op	1154.75 MB/s	        11.94 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-neon/413-15         	     192	   6246910 ns/op	1157.30 MB/s	        11.92 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-neon/413-15         	     190	   6255540 ns/op	1155.70 MB/s	        11.93 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-neon/413-15         	     192	   6240118 ns/op	1158.56 MB/s	        11.90 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-neon/413-15         	     190	   6260897 ns/op	1154.72 MB/s	        11.94 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-neon/413-15         	     192	   6243157 ns/op	1158.00 MB/s	        11.91 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-neon/413-15         	     190	   6261604 ns/op	1154.59 MB/s	        11.94 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-neon/413-15         	     192	   6240201 ns/op	1158.55 MB/s	        11.90 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-neon/413-15         	     190	   6268068 ns/op	1153.39 MB/s	        11.96 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-neon/10k-15         	     140	   8525685 ns/op	3512.42 MB/s	        16.26 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-neon/10k-15         	     139	   8579026 ns/op	3490.58 MB/s	        16.36 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-neon/10k-15         	     139	   8581844 ns/op	3489.43 MB/s	        16.37 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-neon/10k-15         	     139	   8578909 ns/op	3490.63 MB/s	        16.36 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-neon/10k-15         	     140	   8533350 ns/op	3509.26 MB/s	        16.28 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-neon/10k-15         	     139	   8596772 ns/op	3483.38 MB/s	        16.40 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-neon/10k-15         	     139	   8572790 ns/op	3493.12 MB/s	        16.35 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-neon/10k-15         	     135	   8802057 ns/op	3402.13 MB/s	        16.79 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-neon/10k-15         	     136	   8683701 ns/op	3448.50 MB/s	        16.56 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-neon/10k-15         	     139	   8606999 ns/op	3479.24 MB/s	        16.42 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/batch/413-15               	     360	   3281664 ns/op	2203.01 MB/s	         6.259 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/batch/413-15               	     367	   3285440 ns/op	2200.48 MB/s	         6.266 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/batch/413-15               	     364	   3268987 ns/op	2211.56 MB/s	         6.235 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/batch/413-15               	     367	   3259471 ns/op	2218.01 MB/s	         6.217 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/batch/413-15               	     364	   3284400 ns/op	2201.18 MB/s	         6.264 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/batch/413-15               	     367	   3261335 ns/op	2216.75 MB/s	         6.221 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/batch/413-15               	     367	   3275045 ns/op	2207.47 MB/s	         6.247 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/batch/413-15               	     367	   3266723 ns/op	2213.09 MB/s	         6.231 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/batch/413-15               	     363	   3299804 ns/op	2190.90 MB/s	         6.294 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/batch/413-15               	     366	   3287361 ns/op	2199.20 MB/s	         6.270 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/batch/10k-15               	     150	   7955981 ns/op	3763.93 MB/s	        15.17 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/batch/10k-15               	     151	   7879256 ns/op	3800.59 MB/s	        15.03 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/batch/10k-15               	     151	   7947719 ns/op	3767.85 MB/s	        15.16 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/batch/10k-15               	     151	   7963835 ns/op	3760.22 MB/s	        15.19 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/batch/10k-15               	     151	   7924014 ns/op	3779.12 MB/s	        15.11 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/batch/10k-15               	     151	   7887870 ns/op	3796.43 MB/s	        15.04 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/batch/10k-15               	     151	   7894686 ns/op	3793.16 MB/s	        15.06 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/batch/10k-15               	     150	   7922773 ns/op	3779.71 MB/s	        15.11 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/batch/10k-15               	     152	   7868338 ns/op	3805.86 MB/s	        15.01 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/batch/10k-15               	     150	   7947439 ns/op	3767.98 MB/s	        15.16 ns/row	       0 B/op	       0 allocs/op
+PASS
+ok  	github.com/noelruault/research/1brc/code/asm	95.545s
+# power/load AFTER
+Now drawing from 'Battery Power'
+15:53  up 1 day,  6:12, 17 users, load averages: 2.31 2.49 2.80
+
+### Run B raw output
+
+# power/load BEFORE the benchmark run
+Now drawing from 'Battery Power'
+15:54  up 1 day,  6:13, 17 users, load averages: 2.47 2.51 2.79
+goos: darwin
+goarch: arm64
+pkg: github.com/noelruault/research/1brc/code/asm
+cpu: Apple M5 Pro
+BenchmarkTokenize/scalar/413-15  	     180	   6617038 ns/op	1092.57 MB/s	        12.62 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/scalar/413-15  	     180	   6640112 ns/op	1088.77 MB/s	        12.67 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/scalar/413-15  	     181	   6605747 ns/op	1094.43 MB/s	        12.60 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/scalar/413-15  	     178	   6675811 ns/op	1082.95 MB/s	        12.73 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/scalar/413-15  	     181	   6597742 ns/op	1095.76 MB/s	        12.58 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/scalar/413-15  	     180	   6644927 ns/op	1087.98 MB/s	        12.67 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/scalar/413-15  	     175	   6960974 ns/op	1038.58 MB/s	        13.28 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/scalar/413-15  	     177	   6719690 ns/op	1075.88 MB/s	        12.82 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/scalar/413-15  	     180	   6655840 ns/op	1086.20 MB/s	        12.70 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/scalar/413-15  	     181	   6635491 ns/op	1089.53 MB/s	        12.66 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/scalar/10k-15  	      82	  12895909 ns/op	2322.11 MB/s	        24.60 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/scalar/10k-15  	      92	  12928368 ns/op	2316.28 MB/s	        24.66 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/scalar/10k-15  	      92	  12798707 ns/op	2339.75 MB/s	        24.41 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/scalar/10k-15  	      93	  12759974 ns/op	2346.85 MB/s	        24.34 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/scalar/10k-15  	      93	  12940608 ns/op	2314.09 MB/s	        24.68 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/scalar/10k-15  	      92	  12877846 ns/op	2325.37 MB/s	        24.56 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/scalar/10k-15  	      88	  13022028 ns/op	2299.63 MB/s	        24.84 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/scalar/10k-15  	      92	  13062298 ns/op	2292.54 MB/s	        24.91 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/scalar/10k-15  	      93	  13167707 ns/op	2274.18 MB/s	        25.12 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/scalar/10k-15  	      86	  13180335 ns/op	2272.00 MB/s	        25.14 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-swar/413-15         	     213	   5607171 ns/op	1289.34 MB/s	        10.69 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-swar/413-15         	     214	   5576362 ns/op	1296.46 MB/s	        10.64 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-swar/413-15         	     211	   5653780 ns/op	1278.71 MB/s	        10.78 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-swar/413-15         	     213	   5583034 ns/op	1294.92 MB/s	        10.65 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-swar/413-15         	     213	   5622004 ns/op	1285.94 MB/s	        10.72 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-swar/413-15         	     213	   5604885 ns/op	1289.87 MB/s	        10.69 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-swar/413-15         	     213	   5635031 ns/op	1282.97 MB/s	        10.75 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-swar/413-15         	     200	   5955826 ns/op	1213.86 MB/s	        11.36 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-swar/413-15         	     204	   5909035 ns/op	1223.47 MB/s	        11.27 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-swar/413-15         	     201	   5900202 ns/op	1225.31 MB/s	        11.25 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-swar/10k-15         	     165	   7234573 ns/op	4139.26 MB/s	        13.80 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-swar/10k-15         	     145	   8483860 ns/op	3529.74 MB/s	        16.18 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-swar/10k-15         	     148	   8711226 ns/op	3437.61 MB/s	        16.62 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-swar/10k-15         	     159	   7473264 ns/op	4007.05 MB/s	        14.25 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-swar/10k-15         	     156	   7508851 ns/op	3988.06 MB/s	        14.32 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-swar/10k-15         	     165	   7249843 ns/op	4130.54 MB/s	        13.83 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-swar/10k-15         	     165	   7209891 ns/op	4153.43 MB/s	        13.75 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-swar/10k-15         	     159	   7514200 ns/op	3985.23 MB/s	        14.33 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-swar/10k-15         	     154	   7860278 ns/op	3809.76 MB/s	        14.99 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-swar/10k-15         	     157	   7485348 ns/op	4000.59 MB/s	        14.28 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-neon/413-15         	     184	   6439244 ns/op	1122.73 MB/s	        12.28 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-neon/413-15         	     188	   6372649 ns/op	1134.47 MB/s	        12.15 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-neon/413-15         	     187	   6371636 ns/op	1134.65 MB/s	        12.15 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-neon/413-15         	     188	   6362443 ns/op	1136.29 MB/s	        12.14 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-neon/413-15         	     187	   6424564 ns/op	1125.30 MB/s	        12.25 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-neon/413-15         	     188	   6349333 ns/op	1138.63 MB/s	        12.11 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-neon/413-15         	     188	   6324539 ns/op	1143.10 MB/s	        12.06 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-neon/413-15         	     189	   6351328 ns/op	1138.27 MB/s	        12.11 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-neon/413-15         	     187	   6346336 ns/op	1139.17 MB/s	        12.10 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-neon/413-15         	     189	   6312307 ns/op	1145.31 MB/s	        12.04 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-neon/10k-15         	     136	   8750778 ns/op	3422.07 MB/s	        16.69 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-neon/10k-15         	     136	   8721342 ns/op	3433.62 MB/s	        16.63 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-neon/10k-15         	     136	   8788127 ns/op	3407.53 MB/s	        16.76 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-neon/10k-15         	     135	   8788732 ns/op	3407.29 MB/s	        16.76 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-neon/10k-15         	     135	   8779999 ns/op	3410.68 MB/s	        16.75 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-neon/10k-15         	     135	   8787941 ns/op	3407.60 MB/s	        16.76 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-neon/10k-15         	     135	   8780406 ns/op	3410.52 MB/s	        16.75 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-neon/10k-15         	     135	   8765970 ns/op	3416.14 MB/s	        16.72 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-neon/10k-15         	     136	   8751394 ns/op	3421.83 MB/s	        16.69 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/staged-neon/10k-15         	     136	   8721485 ns/op	3433.56 MB/s	        16.63 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/batch/413-15               	     356	   3402876 ns/op	2124.54 MB/s	         6.490 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/batch/413-15               	     352	   3416782 ns/op	2115.90 MB/s	         6.517 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/batch/413-15               	     358	   3349229 ns/op	2158.57 MB/s	         6.388 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/batch/413-15               	     360	   3326576 ns/op	2173.27 MB/s	         6.345 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/batch/413-15               	     358	   3335238 ns/op	2167.63 MB/s	         6.361 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/batch/413-15               	     352	   3386205 ns/op	2135.00 MB/s	         6.459 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/batch/413-15               	     358	   3338056 ns/op	2165.80 MB/s	         6.367 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/batch/413-15               	     358	   3334353 ns/op	2168.20 MB/s	         6.360 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/batch/413-15               	     360	   3338623 ns/op	2165.43 MB/s	         6.368 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/batch/413-15               	     357	   3335992 ns/op	2167.14 MB/s	         6.363 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/batch/10k-15               	     148	   8076370 ns/op	3707.83 MB/s	        15.40 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/batch/10k-15               	     140	   8545592 ns/op	3504.24 MB/s	        16.30 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/batch/10k-15               	     136	   8646462 ns/op	3463.36 MB/s	        16.49 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/batch/10k-15               	     147	   8088421 ns/op	3702.30 MB/s	        15.43 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/batch/10k-15               	     148	   8150096 ns/op	3674.29 MB/s	        15.55 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/batch/10k-15               	     133	   9047460 ns/op	3309.85 MB/s	        17.26 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/batch/10k-15               	     129	   8996026 ns/op	3328.78 MB/s	        17.16 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/batch/10k-15               	     145	   8269232 ns/op	3621.35 MB/s	        15.77 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/batch/10k-15               	     145	   8217187 ns/op	3644.29 MB/s	        15.67 ns/row	       0 B/op	       0 allocs/op
+BenchmarkTokenize/batch/10k-15               	     134	   8975407 ns/op	3336.43 MB/s	        17.12 ns/row	       0 B/op	       0 allocs/op
+BenchmarkParseTemp/scalar/413-15             	     169	   7277742 ns/op	 993.38 MB/s	        13.88 ns/row	       0 B/op	       0 allocs/op
+BenchmarkParseTemp/scalar/413-15             	     165	   7445053 ns/op	 971.05 MB/s	        14.20 ns/row	       0 B/op	       0 allocs/op
+BenchmarkParseTemp/scalar/413-15             	     159	   7523994 ns/op	 960.87 MB/s	        14.35 ns/row	       0 B/op	       0 allocs/op
+BenchmarkParseTemp/scalar/413-15             	     159	   7150730 ns/op	1011.02 MB/s	        13.64 ns/row	       0 B/op	       0 allocs/op
+BenchmarkParseTemp/scalar/413-15             	     190	   6289329 ns/op	1149.50 MB/s	        12.00 ns/row	       0 B/op	       0 allocs/op
+BenchmarkParseTemp/scalar/413-15             	     190	   6339842 ns/op	1140.34 MB/s	        12.09 ns/row	       0 B/op	       0 allocs/op
+BenchmarkParseTemp/scalar/413-15             	     190	   6243064 ns/op	1158.01 MB/s	        11.91 ns/row	       0 B/op	       0 allocs/op
+BenchmarkParseTemp/scalar/413-15             	     193	   6232960 ns/op	1159.89 MB/s	        11.89 ns/row	       0 B/op	       0 allocs/op
+BenchmarkParseTemp/scalar/413-15             	     195	   6131400 ns/op	1179.10 MB/s	        11.69 ns/row	       0 B/op	       0 allocs/op
+BenchmarkParseTemp/scalar/413-15             	     195	   6125432 ns/op	1180.25 MB/s	        11.68 ns/row	       0 B/op	       0 allocs/op
+BenchmarkParseTemp/scalar/10k-15             	      96	  10703066 ns/op	2797.87 MB/s	        20.41 ns/row	       0 B/op	       0 allocs/op
+BenchmarkParseTemp/scalar/10k-15             	     100	  10820110 ns/op	2767.60 MB/s	        20.64 ns/row	       0 B/op	       0 allocs/op
+BenchmarkParseTemp/scalar/10k-15             	     100	  10844295 ns/op	2761.43 MB/s	        20.68 ns/row	       0 B/op	       0 allocs/op
+BenchmarkParseTemp/scalar/10k-15             	     100	  10786838 ns/op	2776.14 MB/s	        20.57 ns/row	       0 B/op	       0 allocs/op
+BenchmarkParseTemp/scalar/10k-15             	     100	  10640610 ns/op	2814.29 MB/s	        20.30 ns/row	       0 B/op	       0 allocs/op
+BenchmarkParseTemp/scalar/10k-15             	     100	  10545502 ns/op	2839.67 MB/s	        20.11 ns/row	       0 B/op	       0 allocs/op
+BenchmarkParseTemp/scalar/10k-15             	     100	  10438608 ns/op	2868.75 MB/s	        19.91 ns/row	       0 B/op	       0 allocs/op
+BenchmarkParseTemp/scalar/10k-15             	     100	  10580548 ns/op	2830.27 MB/s	        20.18 ns/row	       0 B/op	       0 allocs/op
+BenchmarkParseTemp/scalar/10k-15             	     100	  10370056 ns/op	2887.72 MB/s	        19.78 ns/row	       0 B/op	       0 allocs/op
+BenchmarkParseTemp/scalar/10k-15             	     100	  10314220 ns/op	2903.35 MB/s	        19.67 ns/row	       0 B/op	       0 allocs/op
+BenchmarkParseTemp/branchless/413-15         	     176	   6793966 ns/op	1064.11 MB/s	        12.96 ns/row	       0 B/op	       0 allocs/op
+BenchmarkParseTemp/branchless/413-15         	     175	   6770996 ns/op	1067.72 MB/s	        12.91 ns/row	       0 B/op	       0 allocs/op
+BenchmarkParseTemp/branchless/413-15         	     177	   6723839 ns/op	1075.21 MB/s	        12.82 ns/row	       0 B/op	       0 allocs/op
+BenchmarkParseTemp/branchless/413-15         	     178	   6688664 ns/op	1080.87 MB/s	        12.76 ns/row	       0 B/op	       0 allocs/op
+BenchmarkParseTemp/branchless/413-15         	     177	   6730735 ns/op	1074.11 MB/s	        12.84 ns/row	       0 B/op	       0 allocs/op
+BenchmarkParseTemp/branchless/413-15         	     178	   6701216 ns/op	1078.84 MB/s	        12.78 ns/row	       0 B/op	       0 allocs/op
+BenchmarkParseTemp/branchless/413-15         	     178	   6693381 ns/op	1080.11 MB/s	        12.77 ns/row	       0 B/op	       0 allocs/op
+BenchmarkParseTemp/branchless/413-15         	     178	   6677936 ns/op	1082.60 MB/s	        12.74 ns/row	       0 B/op	       0 allocs/op
+BenchmarkParseTemp/branchless/413-15         	     177	   6709332 ns/op	1077.54 MB/s	        12.80 ns/row	       0 B/op	       0 allocs/op
+BenchmarkParseTemp/branchless/413-15         	     178	   6678829 ns/op	1082.46 MB/s	        12.74 ns/row	       0 B/op	       0 allocs/op
+BenchmarkParseTemp/branchless/10k-15         	     135	   8833512 ns/op	3390.02 MB/s	        16.85 ns/row	       0 B/op	       0 allocs/op
+BenchmarkParseTemp/branchless/10k-15         	     135	   8788916 ns/op	3407.22 MB/s	        16.76 ns/row	       0 B/op	       0 allocs/op
+BenchmarkParseTemp/branchless/10k-15         	     135	   8802431 ns/op	3401.99 MB/s	        16.79 ns/row	       0 B/op	       0 allocs/op
+BenchmarkParseTemp/branchless/10k-15         	     134	   8849006 ns/op	3384.08 MB/s	        16.88 ns/row	       0 B/op	       0 allocs/op
+BenchmarkParseTemp/branchless/10k-15         	     133	   9000580 ns/op	3327.09 MB/s	        17.17 ns/row	       0 B/op	       0 allocs/op
+BenchmarkParseTemp/branchless/10k-15         	     135	   8832107 ns/op	3390.56 MB/s	        16.85 ns/row	       0 B/op	       0 allocs/op
+BenchmarkParseTemp/branchless/10k-15         	     136	   8780660 ns/op	3410.42 MB/s	        16.75 ns/row	       0 B/op	       0 allocs/op
+BenchmarkParseTemp/branchless/10k-15         	     130	   9121342 ns/op	3283.05 MB/s	        17.40 ns/row	       0 B/op	       0 allocs/op
+BenchmarkParseTemp/branchless/10k-15         	     135	   8845786 ns/op	3385.32 MB/s	        16.87 ns/row	       0 B/op	       0 allocs/op
+BenchmarkParseTemp/branchless/10k-15         	     135	   8840489 ns/op	3387.34 MB/s	        16.86 ns/row	       0 B/op	       0 allocs/op
+BenchmarkNEONTransferFloor/413-15            	     163	   7334012 ns/op	 985.76 MB/s	        13.99 ns/row	       0 B/op	       0 allocs/op
+BenchmarkNEONTransferFloor/413-15            	     165	   7194127 ns/op	1004.92 MB/s	        13.72 ns/row	       0 B/op	       0 allocs/op
+BenchmarkNEONTransferFloor/413-15            	     165	   7218500 ns/op	1001.53 MB/s	        13.77 ns/row	       0 B/op	       0 allocs/op
+BenchmarkNEONTransferFloor/413-15            	     165	   7202068 ns/op	1003.82 MB/s	        13.74 ns/row	       0 B/op	       0 allocs/op
+BenchmarkNEONTransferFloor/413-15            	     166	   7186724 ns/op	1005.96 MB/s	        13.71 ns/row	       0 B/op	       0 allocs/op
+BenchmarkNEONTransferFloor/413-15            	     165	   7235228 ns/op	 999.22 MB/s	        13.80 ns/row	       0 B/op	       0 allocs/op
+BenchmarkNEONTransferFloor/413-15            	     165	   7212756 ns/op	1002.33 MB/s	        13.76 ns/row	       0 B/op	       0 allocs/op
+BenchmarkNEONTransferFloor/413-15            	     165	   7208333 ns/op	1002.94 MB/s	        13.75 ns/row	       0 B/op	       0 allocs/op
+BenchmarkNEONTransferFloor/413-15            	     166	   7180400 ns/op	1006.85 MB/s	        13.70 ns/row	       0 B/op	       0 allocs/op
+BenchmarkNEONTransferFloor/413-15            	     165	   7253041 ns/op	 996.76 MB/s	        13.83 ns/row	       0 B/op	       0 allocs/op
+BenchmarkNEONTransferFloor/10k-15            	     132	   9022418 ns/op	3319.04 MB/s	        17.21 ns/row	       0 B/op	       0 allocs/op
+BenchmarkNEONTransferFloor/10k-15            	     133	   8969486 ns/op	3338.63 MB/s	        17.11 ns/row	       0 B/op	       0 allocs/op
+BenchmarkNEONTransferFloor/10k-15            	     135	   8811969 ns/op	3398.31 MB/s	        16.81 ns/row	       0 B/op	       0 allocs/op
+BenchmarkNEONTransferFloor/10k-15            	     135	   8822650 ns/op	3394.19 MB/s	        16.83 ns/row	       0 B/op	       0 allocs/op
+BenchmarkNEONTransferFloor/10k-15            	     134	   8887592 ns/op	3369.39 MB/s	        16.95 ns/row	       0 B/op	       0 allocs/op
+BenchmarkNEONTransferFloor/10k-15            	     132	   9031302 ns/op	3315.78 MB/s	        17.23 ns/row	       0 B/op	       0 allocs/op
+BenchmarkNEONTransferFloor/10k-15            	     133	   9010699 ns/op	3323.36 MB/s	        17.19 ns/row	       0 B/op	       0 allocs/op
+BenchmarkNEONTransferFloor/10k-15            	     132	   9090059 ns/op	3294.34 MB/s	        17.34 ns/row	       0 B/op	       0 allocs/op
+BenchmarkNEONTransferFloor/10k-15            	     132	   9036359 ns/op	3313.92 MB/s	        17.24 ns/row	       0 B/op	       0 allocs/op
+BenchmarkNEONTransferFloor/10k-15            	     100	  10648606 ns/op	2812.18 MB/s	        20.31 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/shift/single-15            	 2181484	       548.6 ns/op	         2.143 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/shift/single-15            	 2238111	       541.0 ns/op	         2.113 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/shift/single-15            	 2197093	       547.6 ns/op	         2.139 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/shift/single-15            	 2239510	       541.5 ns/op	         2.115 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/shift/single-15            	 2215395	       540.9 ns/op	         2.113 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/shift/single-15            	 2221174	       539.9 ns/op	         2.109 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/shift/single-15            	 2227143	       540.5 ns/op	         2.111 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/shift/single-15            	 2223742	       541.3 ns/op	         2.114 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/shift/single-15            	 2201197	       545.1 ns/op	         2.129 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/shift/single-15            	 2199351	       544.1 ns/op	         2.125 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/lut/single-15              	 1725146	       698.2 ns/op	         2.727 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/lut/single-15              	 1724145	       697.0 ns/op	         2.723 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/lut/single-15              	 1714741	       701.9 ns/op	         2.742 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/lut/single-15              	 1719166	       695.8 ns/op	         2.718 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/lut/single-15              	 1728322	       696.3 ns/op	         2.720 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/lut/single-15              	 1732641	       693.2 ns/op	         2.708 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/lut/single-15              	 1729410	       694.0 ns/op	         2.711 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/lut/single-15              	 1724588	       695.6 ns/op	         2.717 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/lut/single-15              	 1731888	       693.2 ns/op	         2.708 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/lut/single-15              	 1722159	       696.0 ns/op	         2.719 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/shift/interleaved2-15      	 3507284	       341.7 ns/op	         1.335 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/shift/interleaved2-15      	 3508969	       342.1 ns/op	         1.336 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/shift/interleaved2-15      	 3532393	       340.2 ns/op	         1.329 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/shift/interleaved2-15      	 3477307	       341.8 ns/op	         1.335 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/shift/interleaved2-15      	 3523898	       340.8 ns/op	         1.331 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/shift/interleaved2-15      	 3527077	       340.8 ns/op	         1.331 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/shift/interleaved2-15      	 3513486	       341.4 ns/op	         1.334 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/shift/interleaved2-15      	 3510340	       342.6 ns/op	         1.338 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/shift/interleaved2-15      	 3529255	       341.4 ns/op	         1.334 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/shift/interleaved2-15      	 3512404	       343.3 ns/op	         1.341 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/shift/single-control-15    	 2222053	       538.9 ns/op	         2.105 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/shift/single-control-15    	 2231890	       539.6 ns/op	         2.108 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/shift/single-control-15    	 2229954	       537.8 ns/op	         2.101 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/shift/single-control-15    	 2238996	       538.0 ns/op	         2.101 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/shift/single-control-15    	 2231169	       538.3 ns/op	         2.103 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/shift/single-control-15    	 2227662	       541.8 ns/op	         2.117 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/shift/single-control-15    	 2177607	       566.8 ns/op	         2.214 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/shift/single-control-15    	 2235416	       537.5 ns/op	         2.100 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/shift/single-control-15    	 2227422	       538.5 ns/op	         2.104 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/shift/single-control-15    	 2233732	       536.9 ns/op	         2.097 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/shift/interleaved2-control-15         	 3494838	       340.8 ns/op	         1.331 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/shift/interleaved2-control-15         	 3516487	       340.4 ns/op	         1.330 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/shift/interleaved2-control-15         	 3516213	       341.2 ns/op	         1.333 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/shift/interleaved2-control-15         	 3521282	       340.8 ns/op	         1.331 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/shift/interleaved2-control-15         	 3482044	       342.6 ns/op	         1.338 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/shift/interleaved2-control-15         	 3515977	       340.8 ns/op	         1.331 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/shift/interleaved2-control-15         	 3522588	       341.0 ns/op	         1.332 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/shift/interleaved2-control-15         	 3537622	       342.7 ns/op	         1.339 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/shift/interleaved2-control-15         	 3528818	       341.8 ns/op	         1.335 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/shift/interleaved2-control-15         	 3523772	       344.2 ns/op	         1.345 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/lut/interleaved2-15                   	 3009793	       394.7 ns/op	         1.542 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/lut/interleaved2-15                   	 3052527	       392.7 ns/op	         1.534 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/lut/interleaved2-15                   	 3067795	       392.1 ns/op	         1.532 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/lut/interleaved2-15                   	 3072180	       382.8 ns/op	         1.495 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/lut/interleaved2-15                   	 3160544	       379.1 ns/op	         1.481 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/lut/interleaved2-15                   	 3198109	       375.2 ns/op	         1.466 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/lut/interleaved2-15                   	 3187998	       377.6 ns/op	         1.475 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/lut/interleaved2-15                   	 3206866	       375.0 ns/op	         1.465 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/lut/interleaved2-15                   	 3192615	       376.6 ns/op	         1.471 ns/row	       0 B/op	       0 allocs/op
+BenchmarkMaskName/lut/interleaved2-15                   	 3178473	       377.2 ns/op	         1.474 ns/row	       0 B/op	       0 allocs/op
+PASS
+ok  	github.com/noelruault/research/1brc/code/asm	237.886s
+# power/load AFTER the benchmark run
+Now drawing from 'Battery Power'
+15:58  up 1 day,  6:17, 17 users, load averages: 3.05 3.25 3.09

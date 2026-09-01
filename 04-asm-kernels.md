@@ -1,6 +1,6 @@
 # 04 — Kernels: what the tokenizer costs per row on this chip, and which shape wins
 
-Every number, the exact commands, the machine state and the full ten-run output: [`04-asm-kernels-data.txt`](04-asm-kernels-data.txt). All of it is **PROVISIONAL**: the session ran on battery, which `spec.md:42` makes provisional by rule. Per the loop's own lesson the ORDERING is the trustworthy part, and the orderings here do not depend on which run was picked: for every verdict below, the winner's slowest of ten runs is still faster than the loser's fastest of ten. That separation, not the size of the median gap, is what the orderings rest on — within-benchmark spread reaches 15.6% on the noisiest loop, so a median difference alone would not have established one.
+Every number, the exact commands, the machine state and the full ten-run output: [`04-asm-kernels-data.txt`](04-asm-kernels-data.txt). All of it is **PROVISIONAL**: the session ran on battery, which `spec.md:42` makes provisional by rule. Per the loop's own lesson the ORDERING is the trustworthy part, and every ordering here is justified by separation rather than by the size of a median gap: in the run it is quoted from, the winner's slowest of ten runs is still faster than the loser's fastest of ten. That check is the one that matters, because within-benchmark full-range spread reaches 15.6% on the noisiest loop, so a median difference alone would not have established an ordering. One verdict is weaker than the rest and is labelled where it appears: the batch kernel's LOSS on the 10k stress case reproduced in direction across two runs but its ranges overlap in the noisier one.
 
 The kernels live in `1brc/code/asm`, a Go module whose `make test` is the gate `spec.md:29` names for it. They are Go and Go's Plan 9 arm64 assembly rather than a separate C/clang harness, because the deliverable of this study is a Go binary: a kernel that wins in isolation but cannot be called cheaply from Go has not won anything, and `go-v2-kernels` is explicitly the ticket that has to measure "Plan9 asm or SWAR-in-Go where the call overhead kills the asm win". Measuring in Go from the start means that cost is in every number below instead of being discovered later.
 
@@ -20,9 +20,9 @@ Set the three measured results next to it and they tell one story:
 |---|---|---|
 | 16-byte NEON scan instead of 8-byte SWAR, per row (H2) | **+1.830 ns/row (+16.3%)** | **+3.185 ns/row (+23.1%)** |
 | one bare vector-to-general transfer per row | +1.080 ns/row (+8.2%) | +0.825 ns/row (+4.9%) |
-| 32-byte dual-needle compare, amortised over every row in the window | **−4.750 ns/row (−42.3%)** | +1.960 ns/row (+14.2%) |
+| 32-byte dual-needle compare, amortised over every row in the window | **−4.24 to −4.37 ns/row (−40.4% / −40.7%)** | +1.74 to +1.83 ns/row (+12.1% / +13.8%) |
 
-Per row, the wider window does not pay for the transfer it forces. Batched, the same vector compare — now answering **both** `;` and `\n` for roughly 2.3 rows out of one pair of transfers — is the largest single win measured anywhere in this study so far: **6.475 ns/row against staged SWAR's 11.225** on the official key set.
+Per row, the wider window does not pay for the transfer it forces. Batched, the same vector compare — now answering **both** `;` and `\n` for roughly 2.3 rows out of one pair of transfers — is the largest single win measured anywhere in this study so far: **6.25-6.37 ns/row against staged SWAR's 10.49-10.74** on the official key set, across the two post-fix runs.
 
 ## H2 — falsified: 8-byte SWAR beats a 16-byte NEON compare, and by more where it should have lost
 
@@ -34,7 +34,7 @@ Per row, the wider window does not pay for the transfer it forces. Batched, the 
 
 The recon's hedge was right for the right reason, and the hedge should have been the prediction.
 
-**Not killed, parked as [`PARKED.md`](PARKED.md) P-01 with a revive trigger.** The rescue is not a better NEON scan, it is fewer transfers per row, and that rescue is already measured: it is the batch kernel below, which wins by 42.3%.
+**Not killed, parked as [`PARKED.md`](PARKED.md) P-01 with a revive trigger.** The rescue is not a better NEON scan, it is fewer transfers per row, and that rescue is already measured: it is the batch kernel below, which wins by about 40.5%.
 
 ## H3 — split, and the split is the finding
 
@@ -69,8 +69,8 @@ Getting this measurement right took two attempts and the first one pointed the o
 
 `03-technique-recon.md` found nothing portable in gigatoken itself and recorded it as a scale reference. What it does contribute is a **shape**: scan a window, emit a token stream, aggregate from the stream, rather than handling one row end to end at a time. Built here as `TokenizeBatch` — one 32-byte load compared against `;` and `\n` in the same pass, both syndromes drained in address order — it is the largest win in this report and also the most input-sensitive.
 
-- **413 stations: 6.475 ns/row against 11.225 for staged SWAR, −42.3%.** One pair of transfers serves ~2.3 rows.
-- **10k stress case: 15.720 against 13.760, +14.2%.** Names average 51.1 bytes, so a 32-byte window no longer spans a row; the amortisation inverts into overhead and the token-stream write is left with nothing to pay for it.
+- **413 stations: 6.253 against 10.490 (−40.4%) in one post-fix run and 6.367 against 10.735 (−40.7%) in the other.** One pair of transfers serves ~2.3 rows. Both runs are disjoint over ten runs each.
+- **10k stress case: 15.110 against 13.280 (+13.8%) and 16.035 against 14.300 (+12.1%).** Names average 51.1 bytes, so a 32-byte window no longer spans a row; the amortisation inverts into overhead and the token-stream write is left with nothing to pay for it. The direction reproduced in both runs; the ten-run ranges overlap in the noisier one, so this crossover is a reproduced direction rather than a separated margin.
 
 The crossover is structural, not mysterious: the batch shape wins exactly while a window holds more than one row. That makes it a property of the key set, and the official key set is comfortably on the winning side.
 
@@ -82,7 +82,8 @@ Two things were fixed before this number was allowed to stand, both of which wou
 ## Method: what is and is not evidence here
 
 - **Every delta quoted is same-run and same-shape:** two loops from one invocation of the suite, with one thing varied. Both halves matter, and both were checked rather than assumed.
-- **Every verdict-bearing pair is disjoint over all ten runs.** The winner's slowest run beats the loser's fastest one in all ten comparisons, the narrowest separation being H6 interleaved at 0.140 ns/row. This is the check that carries the orderings, and it is the one that matters, because within-benchmark spread runs from 0.8% to 15.6% — and the noisiest loop of the eighteen is `batch/413`, the one the largest headline rests on.
+- **Every verdict-bearing pair is disjoint over all ten runs, with one labelled exception.** The winner's slowest run beats the loser's fastest one in every comparison in the main run, the narrowest separation being H6 interleaved at 0.140 ns/row. This is the check that carries the orderings, because within-benchmark full-range spread runs from 0.8% to 15.6%. The exception is the batch kernel's 10k loss after the repair below: disjoint in one post-fix run, overlapping in the other, so it is reported as a reproduced direction rather than a separated margin.
+- **The batch kernel was repaired mid-report and every batch number here is post-repair.** It ended a name at the LAST `;` in a row where every other kernel ends it at the first, which is `gen.Aggregate`'s rule; neither key set produces a name containing `;`, so the corpus agreement tests passed either way. The repair (commit `730d166`) adds one predictable branch and costs about 1.8 points of the headline: −42.3% measured before it, −40.4% and −40.7% in the two runs after. Only `TokenizeBatch` changed, so every non-batch number keeps the original run, and the superseded figures are in `CORRECTIONS.md` rather than deleted.
 - **The harness's own floor was measured with a control.** Two byte-identical copies of the mask loop, in different closures, agree to **0.001-0.002 ns/row**. So closure placement is not moving these numbers, and H6's margins (0.513 and 0.165 ns/row) clear that floor by 83x to 513x. It was run because H6's interleaved margin was small enough to deserve the doubt that it was code layout rather than the kernel.
 - **Run-to-run drift is a different and much larger thing:** the same mask benchmark measured 2.267 ns/row in the main run and 2.102 in the control run, 7.9% apart, from identical code, on a battery-powered machine whose load average moved from 3.4 to 5.0 during the main run and from 2.3 to 2.5 during the control. Numbers from different invocations are never compared here.
 - **Correctness gates the ranking, per `spec.md:36`.** Every kernel is checked against a scalar reference over both corpora, over adversarial input the corpus cannot produce (high-bit UTF-8, which real station names have; names at every length around both window boundaries; `:` and `<` neighbours of `;`), and over 200,000 random inputs. All 1999 legal temperatures are checked value-and-offset at every alignment.
@@ -97,13 +98,13 @@ Two things were fixed before this number was allowed to stand, both of which wou
 | | what to build | why |
 |---|---|---|
 | separator scan | 8-byte SWAR, not a per-row NEON scan | H2 falsified, 16.3-23.1% |
-| whole-row shape | batch a 32-byte dual-needle window into a token stream | −42.3% on the official key set, the largest win measured |
+| whole-row shape | batch a 32-byte dual-needle window into a token stream | −40.4% / −40.7% on the official key set, the largest win measured |
 | temperature parse | both, behind one flag | H3 split; the winner is set by branch predictability, which only the real 15-shard loop settles |
 | name mask | shift, not a lookup table | H6, 22.6% single / 11.7% interleaved |
 
 ## Threads left open
 
-- The batch kernel's win is measured with a 4096-token buffer drained immediately. A real aggregator folds each token into a hash table instead, so the drain loop competes with the table for L1 and for the branch predictor. Whether −42.3% survives that is `go-v1-parallel`'s to measure, and it is the single most load-bearing untested assumption in this report.
+- The batch kernel's win is measured with a 4096-token buffer drained immediately. A real aggregator folds each token into a hash table instead, so the drain loop competes with the table for L1 and for the branch predictor. Whether −40.5% survives that is `go-v1-parallel`'s to measure, and it is the single most load-bearing untested assumption in this report.
 - The batch kernel processes one 32-byte window at a time. Two or four windows per transfer pair would amortise further and the crossover with long names would move; untried.
 - H3's absolute cost (`≤2 ns/row`) is unanswered. It needs a parse-only loop over pre-located fields, which is a different harness from the one built here.
 - No NEON temperature parse exists to falsify the parked argument against it. The argument is a measured bound, not a measurement of the thing itself.
