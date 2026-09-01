@@ -68,7 +68,11 @@ func TokenizeBatch(buf []byte, out []Token) (rows, consumed int) {
 				l = bits.TrailingZeros64(nl)
 			}
 			if s < l {
-				pendingSep = pos + s>>1
+				// First ';' of the row wins, which is gen.Aggregate's rule and what every other kernel here does.
+				// Without the guard a later ';' inside a name overwrites it and this kernel alone splits the row somewhere else.
+				if pendingSep < 0 {
+					pendingSep = pos + s>>1
+				}
 				semi &= semi - 1
 				continue
 			}

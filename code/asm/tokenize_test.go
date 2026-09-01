@@ -62,6 +62,36 @@ func TestCorpusCarriesOverfetchSlack(t *testing.T) {
 	}
 }
 
+// TestEveryKernelEndsTheNameAtTheFIRSTSemicolon pins a semantic no corpus can test: neither key set produces a name containing ';', so the agreement tests above run without ever exercising it.
+// gen.Aggregate splits on the first separator, and a kernel that splits on the last one attributes the row to a different station while still looking correct on every clean input.
+// Only the boundary is asserted, not the token stream: a ';' in a name makes the row's temperature field unparseable by construction, and from there the kernels resynchronise differently by design.
+// The staged kernels take the next row's start from the parse's own output while the batch kernel takes it from the newline mask, so they legitimately disagree about everything AFTER a row the branchless parse cannot read.
+func TestEveryKernelEndsTheNameAtTheFIRSTSemicolon(t *testing.T) {
+	raw := []byte("Ab;cd;1.0\nXy;2.0\n")
+	buf := make([]byte, len(raw), len(raw)+OverfetchSlack)
+	copy(buf, raw)
+
+	const wantSep = 2 // "Ab" — the first ';', at index 2; the second is at 5.
+	if sep := ScalarIndexSemicolon(buf); sep != wantSep {
+		t.Fatalf("premise broken: reference splits at %d, want %d", sep, wantSep)
+	}
+
+	for name, fn := range tokenizerVariants() {
+		got := make([]Token, 4)
+		if n := TokenizeAll(fn, buf, got); n == 0 {
+			continue // The scalar kernel validates its parse and rejects the row outright, which is also correct.
+		}
+		if got[0].NameLen != wantSep {
+			t.Fatalf("%s: name ends at %d, want the FIRST ';' at %d", name, got[0].NameLen, wantSep)
+		}
+	}
+
+	got := make([]Token, 4)
+	if n := TokenizeAllBatch(buf, got); n == 0 || got[0].NameLen != wantSep {
+		t.Fatalf("batch: %d rows, name ends at %d, want the FIRST ';' at %d", n, got[0].NameLen, wantSep)
+	}
+}
+
 func referenceTokens(t *testing.T, c *Corpus) []Token {
 	t.Helper()
 	out := make([]Token, 0, c.Rows)
