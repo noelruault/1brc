@@ -13,7 +13,7 @@ One entry per falsified claim: what was claimed, where it was published, what di
 - **What disproved it:** direct computation over the key table in `code/gen/stations.go`, recorded as probe 5 in `03-technique-recon-data.txt`. Measured: **34.1%** longer than 8 bytes (141 of 413), mean 8.0 bytes, max 26 (`Las Palmas de Gran Canaria`), and only 1.0% longer than 16 bytes. The claim was wrong by a factor of 2.6.
 - **Why it happened:** the figure was invented to support a hypothesis that felt right, in a file whose whole purpose is to hold checkable claims. Nothing measured it, and nothing had to: the key set is 413 rows in a file already in the repo.
 - **Consequence:** H2's prediction changed direction. It had been "NEON wins on names"; it now says the margin may go either way, because SWAR's second load is an L1 hit while NEON pays a vector-to-general-register transfer on every row. The correction also surfaced a fact the wrong number hid: 1.0% of names exceed 16 bytes, so thomaswue's 16-byte hash window has a slow path that fires on ~1% of rows rather than never.
-- **Corrected in:** `82b1a0a` (report and data companion, same commit as the claim).
+- **Corrected in:** `61dcbb6` (report and data companion, same commit as the claim).
 
 ## C2 — "under 1.0 s wall clock, warm page cache" as the stated target
 

@@ -1,6 +1,6 @@
 # bench 2026-09-01T125649Z
 label:    skeleton
-commit:   ba75f9d3d4b5fcc5c0a195a1bbc6d3a4c4cbeced
+commit:   ddefd8f (rewritten by the rebase onto the operator amendment; the original sha ba75f9d3d4b5fcc5c0a195a1bbc6d3a4c4cbeced no longer exists on this branch)
 go:       go version go1.27.0 darwin/arm64
 machine:  Apple M5 Pro, hw.ncpu 15, 24 GiB, 26.5.2 arm64
 hyperfine: hyperfine 1.20.0
