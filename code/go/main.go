@@ -70,8 +70,9 @@ const defaultBufKiB = 1024
 // It is the one arm on this board that removed CPU rather than parallel efficiency, and the compute floor it leaves, 1.152 s, is still above the 1.000 s target.
 const defaultParse = "word"
 
-// defaultFold is the incumbent row loop, unchanged, and it stays that until an arm beats it disjointly: the other three values exist to be measured, not to be defaults in waiting.
-const defaultFold = "slice"
+// defaultFold is the pointer walk on E-27's measurement: 1.233 s against 1.398 s and 1.399 s for the two bracket arms, disjoint, with user CPU 13.49% lower for byte-identical output.
+// It is `ptr` and not `both` because the fuse did not separate from it, and the pre-registered bar was disjoint-or-not-kept; `slice` remains the arm it was measured against.
+const defaultFold = "ptr"
 
 func run(path string, cfg config, out io.Writer) error {
 	stations, err := aggregateFile(path, cfg)

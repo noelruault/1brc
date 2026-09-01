@@ -88,9 +88,10 @@ func aggregateFile(path string, cfg config) (map[string]*gen.Accumulator, error)
 	if kern != kernelRow && pk != parseBranchless {
 		return nil, fmt.Errorf("-kernel %s has no %s parse arm; use -kernel row with -parse %s, or add -parse branchless", cfg.Kernel, cfg.Parse, cfg.Parse)
 	}
-	// The new fold arms are built against the shape production runs and nothing else, so a combination that would silently fall back to the incumbent loop is refused rather than measured.
+	// The pointer arms are built against the shape production runs and nothing else, so a combination that would silently fall back to the incumbent loop is refused rather than measured.
+	// This fires on the DEFAULT now that the default is `ptr`, which is why the message names the flag to add: every arm that is not -parse word has to ask for -fold slice explicitly.
 	if fk != foldSlice && (kern != kernelRow || pk != parseWord) {
-		return nil, fmt.Errorf("-fold %s needs -kernel row and -parse word, got -kernel %s -parse %s", cfg.Fold, cfg.Kernel, cfg.Parse)
+		return nil, fmt.Errorf("-fold %s has no %s/%s arm; add -fold slice to run -kernel %s -parse %s on the incumbent loop", cfg.Fold, cfg.Kernel, cfg.Parse, cfg.Kernel, cfg.Parse)
 	}
 
 	f, err := os.Open(path)

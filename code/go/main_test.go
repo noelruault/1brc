@@ -498,6 +498,16 @@ func TestTheDefaultParseFoldsTheCheckIntoTheWord(t *testing.T) {
 	}
 }
 
+// TestTheDefaultFoldIsThePointerWalk pins E-27, and pins the arm it did NOT adopt as well: `both` does strictly less work per row and was measured 0.81% slower on wall while 0.11% cheaper on user CPU, ranges overlapping, so the fuse did not separate and the pre-registered bar was disjoint-or-not-kept.
+func TestTheDefaultFoldIsThePointerWalk(t *testing.T) {
+	if defaultFold != "ptr" {
+		t.Fatalf("defaultFold = %q, want \"ptr\": E-27 measured the slice walk at 1.398 s and 1.399 s against 1.233 s, disjoint, in a 0.072%% bracket", defaultFold)
+	}
+	if fk, err := foldMode(defaultFold); err != nil || fk != foldPtr {
+		t.Fatalf("foldMode(%q) = (%d, %v), want (foldPtr, nil)", defaultFold, fk, err)
+	}
+}
+
 // TestTheDefaultOversubscribesTheCores pins the decision E-17 bought, not the number it landed on: reverting the default to one worker per core fails here.
 func TestTheDefaultOversubscribesTheCores(t *testing.T) {
 	cores := runtime.NumCPU()

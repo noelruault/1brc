@@ -750,3 +750,50 @@ already had, which is foldRows's own inlined Uint64:
 That is item 1's ceiling, 1.07-1.72% of compute, not indexDelim's 40%.  Item 5
 targets foldRows's own flat time, 0.56/6.39 = 8.76%, 0.40/5.99 = 6.68% and
 0.62/9.37 = 6.62% of compute across the three profiles.
+
+== §Q: queue items 1 and 5, one invocation, and the arithmetic on it =========
+
+Raw output: 1brc/bench/2026-09-01T220012Z-queue-items-1-and-5-the-name-hash-fused-into-the-separator-scan-and-the-fold-walked-with-unsafe-Add.txt
+Every arm byte-compared on BOTH key sets before any timing (10 check-correctness passes, 5 arms x 2 files), by experiment.sh's own per-arm gate.
+
+Benchmark 1: incumbent.a
+  Time (mean ± σ):      1.398 s ±  0.005 s    [User: 17.013 s, System: 1.545 s]
+  Range (min … max):    1.391 s …  1.404 s    5 runs
+Benchmark 2: hash
+  Time (mean ± σ):      1.331 s ±  0.024 s    [User: 15.945 s, System: 1.563 s]
+  Range (min … max):    1.310 s …  1.371 s    5 runs
+Benchmark 3: ptr
+  Time (mean ± σ):      1.233 s ±  0.010 s    [User: 14.718 s, System: 1.561 s]
+  Range (min … max):    1.220 s …  1.248 s    5 runs
+Benchmark 4: both
+  Time (mean ± σ):      1.243 s ±  0.024 s    [User: 14.702 s, System: 1.597 s]
+  Range (min … max):    1.227 s …  1.285 s    5 runs
+  Warning: Statistical outliers were detected. Consider re-running this benchmark on a quiet system without any interferences from other programs.
+
+  $ python3 /tmp/derive.py   (every figure below is this script's output, not prose arithmetic)
+
+  bracket spread: 0.072%   (rule: refuse over 3%)
+  user CPU across arms: min 14.702 max 17.049, no monotone trend check: [17.013, 15.945, 14.718, 14.702, 17.049]
+  
+  wall delta vs each bracket arm, and user-CPU delta:
+    hash  wall   -4.79% /   -4.86%   userCPU   -6.28% /   -6.48%   disjoint from a:True b:True
+    ptr   wall  -11.80% /  -11.87%   userCPU  -13.49% /  -13.67%   disjoint from a:True b:True
+    both  wall  -11.09% /  -11.15%   userCPU  -13.58% /  -13.77%   disjoint from a:True b:True
+  
+  the fuse in isolation (both vs ptr, same function, one bool):
+    wall +0.81%  userCPU -0.11%  ranges [1.227,1.285] vs [1.22,1.248] overlap=True
+    the two channels disagree in SIGN, which is what no effect looks like
+  
+  ptr vs hash: wall -7.36%  ranges overlap=False
+  
+    incumbent.a  compute floor = 17.013/15 = 1.1342 s   parallel efficiency = 81.1%
+    hash         compute floor = 15.945/15 = 1.0630 s   parallel efficiency = 79.9%
+    ptr          compute floor = 14.718/15 = 0.9812 s   parallel efficiency = 79.6%
+    both         compute floor = 14.702/15 = 0.9801 s   parallel efficiency = 78.9%
+  
+  previous published floor (E-25): 1.152 s.  new floor on ptr: 0.9812 s
+  gap to the 1.000 s target from the new floor: -0.0188 s   -> target is REACHABLE
+  item 14 ceiling, re-derived: (wall - floor)/wall = (1.233 - 0.9812)/1.233 = 20.4% landing at 0.9812 s
+  
+  headline move: 1.424 s (E-25) -> 1.233 s = -13.41%
+  but the incumbent re-measured HERE is 1.398/1.399 s, not 1.424, so the honest delta is the in-invocation one above
