@@ -116,3 +116,237 @@ correctness check; any tool that parses the output line by splitting is wrong.
    CreateMeasurements3 (which slices names out of a concatenated corpus). It is a
    hash-pressure and key-count stressor, not a byte-compatible reproduction; see
    Synthetic10k in gen.go.
+
+# ============================================================================
+# env-baseline — the physical floor
+# ============================================================================
+#
+# Everything below was measured in one session on an otherwise idle machine.
+# ASSETS = /Users/noelruault/Downloads/1brc/1brc-assets, as above. The tool is
+# 1brc/code/gen/cmd/floor, built with:
+#
+#   $ cd 1brc/code/gen && go build -o /tmp/1brc-floor ./cmd/floor
+#
+# Its modes: read (I/O only, read() into a reusable buffer), count (the same read
+# plus bytes.Count of '\n'), mmap (count newlines over a MAP_SHARED mapping, no
+# copy), scan (bufio.Scanner line loop). -workers N splits the file into N
+# contiguous ranges read with pread; -nocache sets darwin F_NOCACHE on the fd.
+
+## The machine, as sysctl reports it
+
+$ sysctl -n hw.ncpu hw.memsize machdep.cpu.brand_string
+15
+25769803776
+Apple M5 Pro
+
+$ sysctl hw.perflevel0.name hw.perflevel1.name hw.perflevel0.physicalcpu hw.perflevel1.physicalcpu hw.physicalcpu hw.logicalcpu hw.pagesize hw.l1dcachesize hw.l2cachesize
+hw.perflevel0.name: Super
+hw.perflevel1.name: Performance
+hw.perflevel0.physicalcpu: 5
+hw.perflevel1.physicalcpu: 10
+hw.physicalcpu: 15
+hw.logicalcpu: 15
+hw.pagesize: 16384
+hw.l1dcachesize: 65536
+hw.l2cachesize: 8388608
+
+$ sw_vers -productVersion ; uname -m ; go version
+26.5.2
+arm64
+go version go1.27.0 darwin/arm64
+
+  Note two facts that matter later. The two performance levels are named "Super"
+  (5 cores) and "Performance" (10 cores) -- this chip reports no Efficiency
+  level at all, so all 15 cores are worth scheduling work on. And the page size
+  is 16384 bytes, not 4096: a 13.8 GB mmap needs 842,067 page faults, which is
+  the measured mmap result below.
+
+$ sysctl -n hw.memsize            # 25769803776 = 24.00 GiB
+$ ls -l $ASSETS/measurements-1b.txt   # 13795610267 = 12.85 GiB
+
+  The 1b file is 53.5% of physical RAM. It does NOT stay resident: vm_stat after
+  two full read passes shows free pages down to 3699 (57.8 MiB) with
+  active+inactive at 620,581 pages (9.47 GiB), i.e. macOS evicts the head of the
+  file while reading its tail. THE OFFICIAL EVAL'S "FILE IS IN THE PAGE CACHE"
+  PREMISE CANNOT BE REPRODUCED ON THIS MACHINE. Every 1b timing here pays real
+  storage bandwidth.
+
+$ vm_stat | head -6      # after two full sequential read passes over the 1b file
+Mach Virtual Memory Statistics: (page size of 16384 bytes)
+Pages free:                                     3699.
+Pages active:                                 285912.
+Pages inactive:                               334669.
+Pages speculative:                              5252.
+Pages throttled:                                   0.
+
+## Cold cache: not available, and what was used instead
+
+`purge` requires sudo and this loop runs unattended (`sudo -n true` -> "sudo: a
+password is required"), so a purged-cache measurement was not taken. Instead the
+uncached path is measured directly with darwin's F_NOCACHE (fcntl F_NOCACHE=48,
+set on the fd before reading): the kernel does not retain this descriptor's pages
+in the unified buffer cache. This is not identical to a purged cache -- other
+processes' pages stay resident -- and it is reported as "uncached", never "cold".
+
+Evidence that F_NOCACHE actually took effect: three back-to-back 13.8 GB
+uncached passes left free pages at 231,424 (3.53 GiB) and moved active by 25k
+pages, where the same three passes WITHOUT it drove free pages to 3,699. A
+no-op fcntl would have filled the cache.
+
+## Single-observation runs, 1b file, 1,000,000,000 rows
+
+$ for i in 1 2 3; do /tmp/1brc-floor -mode read -nocache -in $ASSETS/measurements-1b.txt -rows 1000000000; done
+mode=read workers=1 nocache=true bs=1024KiB bytes=13795610267 lines=0 elapsed=1.427s rate=9.67 GB/s per_row=1.43 ns
+mode=read workers=1 nocache=true bs=1024KiB bytes=13795610267 lines=0 elapsed=1.396s rate=9.88 GB/s per_row=1.40 ns
+mode=read workers=1 nocache=true bs=1024KiB bytes=13795610267 lines=0 elapsed=1.405s rate=9.82 GB/s per_row=1.41 ns
+
+$ for w in 2 4 8 15; do /tmp/1brc-floor -mode read -nocache -workers $w -in $ASSETS/measurements-1b.txt -rows 1000000000; done
+mode=read workers=2 nocache=true bs=1024KiB bytes=13795610267 lines=0 elapsed=1.942s rate=7.10 GB/s per_row=1.94 ns
+mode=read workers=4 nocache=true bs=1024KiB bytes=13795610267 lines=0 elapsed=1.225s rate=11.26 GB/s per_row=1.23 ns
+mode=read workers=8 nocache=true bs=1024KiB bytes=13795610267 lines=0 elapsed=1.148s rate=12.02 GB/s per_row=1.15 ns
+mode=read workers=15 nocache=true bs=1024KiB bytes=13795610267 lines=0 elapsed=976ms rate=14.13 GB/s per_row=0.98 ns
+
+$ for i in 1 2 3; do /tmp/1brc-floor -mode read -in $ASSETS/measurements-1b.txt -rows 1000000000; done   # page-cached path, after two warming passes
+mode=read workers=1 nocache=false bs=1024KiB bytes=13795610267 lines=0 elapsed=1.221s rate=11.30 GB/s per_row=1.22 ns
+mode=read workers=1 nocache=false bs=1024KiB bytes=13795610267 lines=0 elapsed=1.234s rate=11.18 GB/s per_row=1.23 ns
+mode=read workers=1 nocache=false bs=1024KiB bytes=13795610267 lines=0 elapsed=1.252s rate=11.02 GB/s per_row=1.25 ns
+
+$ for w in 4 8 15; do /tmp/1brc-floor -mode read -workers $w -in $ASSETS/measurements-1b.txt -rows 1000000000; done
+mode=read workers=4 nocache=false bs=1024KiB bytes=13795610267 lines=0 elapsed=956ms rate=14.43 GB/s per_row=0.96 ns
+mode=read workers=8 nocache=false bs=1024KiB bytes=13795610267 lines=0 elapsed=853ms rate=16.18 GB/s per_row=0.85 ns
+mode=read workers=15 nocache=false bs=1024KiB bytes=13795610267 lines=0 elapsed=980ms rate=14.08 GB/s per_row=0.98 ns
+
+$ for w in 1 8 15; do /tmp/1brc-floor -mode count -workers $w -in $ASSETS/measurements-1b.txt -rows 1000000000; done
+mode=count workers=1 nocache=false bs=1024KiB bytes=13795610267 lines=1000000000 elapsed=1.445s rate=9.55 GB/s per_row=1.44 ns
+mode=count workers=8 nocache=false bs=1024KiB bytes=13795610267 lines=1000000000 elapsed=923ms rate=14.95 GB/s per_row=0.92 ns
+mode=count workers=15 nocache=false bs=1024KiB bytes=13795610267 lines=1000000000 elapsed=950ms rate=14.52 GB/s per_row=0.95 ns
+
+  Every count run reports lines=1000000000, which is an independent confirmation
+  of the generator's row count (wc -l agrees, below).
+
+$ /tmp/1brc-floor -mode scan -in $ASSETS/measurements-1b.txt -rows 1000000000
+mode=scan workers=1 nocache=false bs=1024KiB bytes=13795610267 lines=1000000000 elapsed=11.298s rate=1.22 GB/s per_row=11.30 ns
+
+$ for i in 1 2; do /usr/bin/time -p wc -l < $ASSETS/measurements-1b.txt; done
+1000000000  real 7.41  user 6.03  sys 1.11
+1000000000  real 9.21  user 7.81  sys 1.13
+
+$ dd if=$ASSETS/measurements-1b.txt of=/dev/null bs=1m
+13156+1 records out
+13795610267 bytes transferred in 1.342519 secs (10275914357 bytes/sec)
+
+## mmap, 1b file: measured 5-9x SLOWER than read(), and non-monotonic in workers
+
+$ for w in 1 4 8 15 30; do /tmp/1brc-floor -mode mmap -workers $w -in $ASSETS/measurements-1b.txt -rows 1000000000; done
+mode=mmap workers=1  nocache=false bytes=13795610267 lines=1000000000 elapsed=9.825s  rate=1.40 GB/s per_row=9.83 ns
+mode=mmap workers=4  nocache=false bytes=13795610267 lines=1000000000 elapsed=18.464s rate=0.75 GB/s per_row=18.46 ns
+mode=mmap workers=8  nocache=false bytes=13795610267 lines=1000000000 elapsed=9.949s  rate=1.39 GB/s per_row=9.95 ns
+mode=mmap workers=15 nocache=false bytes=13795610267 lines=1000000000 elapsed=6.746s  rate=2.04 GB/s per_row=6.75 ns
+mode=mmap workers=30 nocache=false bytes=13795610267 lines=1000000000 elapsed=6.732s  rate=2.05 GB/s per_row=6.73 ns
+
+$ for w in 1 4 8 15; do /tmp/1brc-floor -mode mmap -workers $w -in $ASSETS/measurements-1b.txt -rows 1000000000; done   # repeat, to test whether the workers=4 outlier is noise
+mode=mmap workers=1  nocache=false bytes=13795610267 lines=1000000000 elapsed=9.847s  rate=1.40 GB/s per_row=9.85 ns
+mode=mmap workers=4  nocache=false bytes=13795610267 lines=1000000000 elapsed=18.002s rate=0.77 GB/s per_row=18.00 ns
+mode=mmap workers=8  nocache=false bytes=13795610267 lines=1000000000 elapsed=10.444s rate=1.32 GB/s per_row=10.44 ns
+mode=mmap workers=15 nocache=false bytes=13795610267 lines=1000000000 elapsed=6.896s  rate=2.00 GB/s per_row=6.90 ns
+
+  The workers=4 pessimum reproduces (18.46 s then 18.00 s, 2.6x worse than
+  workers=15 and 1.8x worse than workers=1), so it is a real property of this
+  path, not noise. Its cause is NOT established here -- 4 concurrent fault
+  streams over a file 53.5% the size of RAM interacting badly with fault-ahead
+  is a hypothesis, not a measurement. See the threads in 02-baseline.md.
+
+## 10m file, 10,000,000 rows: the same floors where the data does fit in cache
+
+$ for m in read count mmap; do for w in 1 8; do /tmp/1brc-floor -mode $m -workers $w -in $ASSETS/measurements-10m.txt -rows 10000000; done; done
+mode=read  workers=1 bytes=137949720 lines=0        elapsed=7ms  rate=18.84 GB/s per_row=0.73 ns
+mode=read  workers=8 bytes=137949720 lines=0        elapsed=3ms  rate=54.66 GB/s per_row=0.25 ns
+mode=count workers=1 bytes=137949720 lines=10000000 elapsed=8ms  rate=16.34 GB/s per_row=0.84 ns
+mode=count workers=8 bytes=137949720 lines=10000000 elapsed=2ms  rate=59.20 GB/s per_row=0.23 ns
+mode=mmap  workers=1 bytes=137949720 lines=10000000 elapsed=9ms  rate=15.03 GB/s per_row=0.92 ns
+mode=mmap  workers=8 bytes=137949720 lines=10000000 elapsed=8ms  rate=17.25 GB/s per_row=0.80 ns
+
+$ /tmp/1brc-floor -mode scan -in $ASSETS/measurements-10m.txt -rows 10000000
+mode=scan workers=1 bytes=137949720 lines=10000000 elapsed=109ms rate=1.27 GB/s per_row=10.86 ns
+
+  At 137 MB the file is entirely resident, and read() hits 54.66 GB/s -- memory
+  bandwidth, not storage. mmap still only reaches 17.25 GB/s and scales 1.15x
+  from 1 to 8 workers, so the mmap penalty is not purely about exceeding RAM:
+  the fault path itself does not parallelise.
+
+## Steady state under hyperfine, 1b file
+
+$ hyperfine --version
+hyperfine 1.19.0
+
+$ hyperfine --warmup 1 --runs 5 -n 'read w=8' '... -mode read -workers 8 ...' -n 'read w=15' '...' -n 'count w=8' '...'
+Benchmark 1: read w=8
+  Time (mean ± σ):      1.126 s ±  0.007 s    [User: 0.035 s, System: 1.623 s]
+  Range (min … max):    1.114 s …  1.132 s    5 runs
+Benchmark 2: read w=15
+  Time (mean ± σ):      1.128 s ±  0.004 s    [User: 0.042 s, System: 1.917 s]
+  Range (min … max):    1.122 s …  1.131 s    5 runs
+Benchmark 3: count w=8
+  Time (mean ± σ):      1.164 s ±  0.004 s    [User: 0.232 s, System: 1.664 s]
+  Range (min … max):    1.158 s …  1.170 s    5 runs
+Summary
+  read w=8 ran
+    1.00 ± 0.01 times faster than read w=15
+    1.03 ± 0.01 times faster than count w=8
+
+$ hyperfine --warmup 1 --runs 5 -n 'nocache w=8' '...' -n 'nocache w=15' '...' -n 'nocache w=24' '...' -n 'nocache w=15 bs=8m' '...'
+Benchmark 1: nocache w=8
+  Time (mean ± σ):     844.0 ms ±   8.8 ms    [User: 30.9 ms, System: 966.4 ms]
+  Range (min … max):   831.0 ms … 851.7 ms    5 runs
+Benchmark 2: nocache w=15
+  Time (mean ± σ):     754.4 ms ±   8.8 ms    [User: 30.1 ms, System: 1074.7 ms]
+  Range (min … max):   744.2 ms … 767.9 ms    5 runs
+Benchmark 3: nocache w=24
+  Time (mean ± σ):     754.8 ms ±   4.9 ms    [User: 30.0 ms, System: 1184.8 ms]
+  Range (min … max):   747.5 ms … 759.7 ms    5 runs
+Benchmark 4: nocache w=15 bs=8m
+  Time (mean ± σ):      1.047 s ±  0.019 s    [User: 0.011 s, System: 1.632 s]
+  Range (min … max):    1.032 s …  1.081 s    5 runs
+  Warning: Statistical outliers were detected. ...
+Summary
+  nocache w=15 ran
+    1.00 ± 0.01 times faster than nocache w=24
+    1.12 ± 0.02 times faster than nocache w=8
+    1.39 ± 0.03 times faster than nocache w=15 bs=8m
+
+$ hyperfine --warmup 1 --runs 5 -n 'count nocache w=15' '/tmp/1brc-floor -mode count -nocache -workers 15 -in $ASSETS/measurements-1b.txt'
+Benchmark 1: count nocache w=15
+  Time (mean ± σ):     768.8 ms ±   7.9 ms    [User: 246.1 ms, System: 1289.1 ms]
+  Range (min … max):   759.9 ms … 776.7 ms    5 runs
+
+  THE HEADLINE FLOOR: 754.4 ms ± 8.8 ms to move all 13,795,610,267 bytes into
+  registers (18.29 GB/s), uncached, 15 readers, 1 MiB per pread. Adding newline
+  detection over every byte costs +14.4 ms (768.8 vs 754.4), so finding the row
+  boundaries is 1.9% of the read, not a cost centre.
+
+## Naive Go end to end, for the top of the funnel
+
+$ cd 1brc/code/gen && go build -o /tmp/1brc-reference ./cmd/reference
+$ /usr/bin/time -p /tmp/1brc-reference -in $ASSETS/measurements-10m.txt  > /dev/null
+real 0.76
+$ /usr/bin/time -p /tmp/1brc-reference -in $ASSETS/measurements-100m.txt > /dev/null
+real 3.98
+
+  39.8 ns/row at 100m (the 10m run's 76 ns/row is dominated by process start and
+  a cold map). The reference was NOT run on the 1b file: at 39.8 ns/row it would
+  take ~40 s, and the number would add nothing the 100m run does not already
+  give. 1b ≈ 40 s is therefore DERIVED, not measured.
+
+## The arithmetic the target implies
+
+  target                 1.000 s / 1e9 rows  =  1.00 ns/row  =  13.80 GB/s
+  measured read floor    0.754 s             =  0.754 ns/row =  18.29 GB/s
+  headroom               0.246 s             =  24.6% of the budget
+  aggregate CPU budget   15 cores x 1.0 s    =  15.0 ns/row of core time
+  read path's own CPU    30 ms user + 1075 ms sys = 1.10 ns/row of that 15.0
+  left for the work      13.9 ns/row of core time, if parse overlaps I/O perfectly
+
+  bufio.Scanner alone    11.30 ns/row single-threaded  ->  0.75 ns/row over 15 cores
+                         = 75% of the entire wall-clock budget just to iterate lines
+  naive reference        39.8 ns/row single-threaded   ->  2.65 ns/row over 15 cores
+                         = 2.65x over budget with PERFECT scaling and zero I/O cost
