@@ -200,6 +200,31 @@ func BenchmarkMaskName(b *testing.B) {
 		b.ReportMetric(float64(b.Elapsed().Nanoseconds())/float64(b.N*len(words)), "ns/row")
 		sink = x ^ y
 	})
+	// Two byte-identical copies of the shift loops, in different closures.
+	// The spread between a loop and its control is this harness's own floor: any margin smaller than it is code layout, not a kernel.
+	b.Run("shift/single-control", func(b *testing.B) {
+		acc := uint64(0)
+		for b.Loop() {
+			for i := range words {
+				w := words[i] ^ acc
+				acc = ShiftMaskName(w, int(w&7)+1)
+			}
+		}
+		b.ReportMetric(float64(b.Elapsed().Nanoseconds())/float64(b.N*len(words)), "ns/row")
+		sink = acc
+	})
+	b.Run("shift/interleaved2-control", func(b *testing.B) {
+		x, y := uint64(0), uint64(1)
+		for b.Loop() {
+			for i := 0; i+1 < len(words); i += 2 {
+				wx, wy := words[i]^x, words[i+1]^y
+				x = ShiftMaskName(wx, int(wx&7)+1)
+				y = ShiftMaskName(wy, int(wy&7)+1)
+			}
+		}
+		b.ReportMetric(float64(b.Elapsed().Nanoseconds())/float64(b.N*len(words)), "ns/row")
+		sink = x ^ y
+	})
 	b.Run("lut/interleaved2", func(b *testing.B) {
 		x, y := uint64(0), uint64(1)
 		for b.Loop() {
