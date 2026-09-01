@@ -1,91 +1,49 @@
 // Command 1brc aggregates a 1BRC measurements file into min/mean/max per station.
 //
-// This is the skeleton: one goroutine, bufio, a Go map. It exists so the correctness gate and the benchmark harness have something to run before any of it is fast.
+// v1: one goroutine per core, each owning byte ranges of the file, each folding into its own open-addressing table, merged once at the end. The strategy flags exist because 03-technique-recon.md left four hypotheses open and this binary is where they are measured; the defaults are what the measurements picked.
 package main
 
 import (
 	"bufio"
-	"bytes"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
+	"runtime"
 
 	gen "github.com/noelruault/research/1brc/code/gen"
 )
 
 func main() {
 	in := flag.String("in", "measurements.txt", "measurements file to aggregate")
+	cfg := config{}
+	flag.IntVar(&cfg.Workers, "workers", runtime.NumCPU(), "parallel readers/aggregators")
+	flag.IntVar(&cfg.BufKiB, "buf", 4096, "per-worker read buffer, KiB (pread only)")
+	flag.IntVar(&cfg.SegKiB, "seg", 2048, "segment claimed per turn, KiB (-split cursor only)")
+	flag.IntVar(&cfg.Bits, "bits", 17, "log2 of the per-worker table's bucket count")
+	flag.BoolVar(&cfg.NoCache, "nocache", true, "set F_NOCACHE so reads bypass the page cache (pread only)")
+	flag.StringVar(&cfg.Split, "split", "static", "work distribution: static | cursor (H1)")
+	flag.StringVar(&cfg.Table, "table", "combined", "table layout: combined | split (H5)")
+	flag.StringVar(&cfg.IO, "io", "pread", "reader: pread | mmap (H7)")
+	flag.StringVar(&cfg.Parse, "parse", "branchless", "temperature parse: branchless | scalar (H3)")
+	flag.BoolVar(&cfg.Madvise, "madvise", false, "MADV_WILLNEED the whole mapping first (-io mmap only, H7's rescue)")
 	flag.Parse()
 
-	if err := run(*in, os.Stdout); err != nil {
+	if err := run(*in, cfg, os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, "1brc:", err)
 		os.Exit(1)
 	}
 }
 
-func run(path string, out io.Writer) error {
-	f, err := os.Open(path)
+func run(path string, cfg config, out io.Writer) error {
+	stations, err := aggregateFile(path, cfg)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-
-	stations, err := aggregate(bufio.NewReaderSize(f, 1<<20))
-	if err != nil {
+	// Buffered: WriteResult emits one small write per station and the 10k case has ten thousand of them.
+	w := bufio.NewWriterSize(out, 1<<20)
+	if err := gen.WriteResult(w, stations); err != nil {
 		return err
 	}
-	return gen.WriteResult(out, stations)
-}
-
-// aggregate folds the file into per-station accumulators, matching gen.Aggregate's semantics exactly (first ';' is the separator, out-of-range temperatures are an error with a line number) because gen produced the expected output this binary is byte-compared against.
-//
-// Rounding and output formatting stay in gen so the output contract has one definition rather than two that can drift.
-func aggregate(r *bufio.Reader) (map[string]*gen.Accumulator, error) {
-	stations := make(map[string]*gen.Accumulator, 1<<14)
-	line := 0
-	for {
-		b, err := r.ReadSlice('\n')
-		if err != nil && !errors.Is(err, io.EOF) {
-			return nil, fmt.Errorf("line %d: %w", line+1, err)
-		}
-		if len(b) == 0 {
-			return stations, nil
-		}
-		line++
-		row := b
-		if n := len(row); n > 0 && row[n-1] == '\n' {
-			row = row[:n-1]
-		}
-		if len(row) == 0 {
-			continue
-		}
-
-		sep := bytes.IndexByte(row, ';')
-		if sep < 0 {
-			return nil, fmt.Errorf("line %d: no ';' separator", line)
-		}
-		temp, ok := gen.ParseTenths(row[sep+1:])
-		if !ok {
-			return nil, fmt.Errorf("line %d: %q is not a one-decimal temperature", line, row[sep+1:])
-		}
-		if temp < gen.MinTenths || temp > gen.MaxTenths {
-			return nil, fmt.Errorf("line %d: %q is outside [-99.9, 99.9]", line, row[sep+1:])
-		}
-
-		name := row[:sep]
-		if a := stations[string(name)]; a != nil {
-			if temp < a.Min {
-				a.Min = temp
-			}
-			if temp > a.Max {
-				a.Max = temp
-			}
-			a.Sum += temp
-			a.Count++
-			continue
-		}
-		stations[string(name)] = &gen.Accumulator{Min: temp, Max: temp, Sum: temp, Count: 1}
-	}
+	return w.Flush()
 }
