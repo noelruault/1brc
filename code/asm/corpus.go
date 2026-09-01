@@ -27,8 +27,15 @@ func corpusOf(stations []gen.Station, rows int, seed uint64) *Corpus {
 		panic("asm: corpus generation failed: " + err.Error())
 	}
 	b := buf.Bytes()
-	return &Corpus{Bytes: b, Rows: bytes.Count(b, []byte{'\n'})}
+	// The kernels load 8 or 16 bytes at a time, so the last row over-fetches past the final newline.
+	// A real reader over-allocates its chunk buffer for exactly this; the corpus does the same rather than making every kernel carry a tail branch.
+	padded := make([]byte, len(b), len(b)+OverfetchSlack)
+	copy(padded, b)
+	return &Corpus{Bytes: padded, Rows: bytes.Count(b, []byte{'\n'})}
 }
+
+// OverfetchSlack is how many readable bytes a tokenizer buffer must carry past its logical end.
+const OverfetchSlack = 16
 
 // Corpus413 is the official 413-station key set: mean name length 8.0 bytes, 34.1% over 8 bytes, 1.0% over 16 (03-technique-recon.md).
 var Corpus413 = sync.OnceValue(func() *Corpus {
