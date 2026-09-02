@@ -1187,3 +1187,95 @@ The eight runs, verbatim from that file (round 0 of each is the discarded outlie
     (0.9771 -> 0.9772 s, user CPU 14.6567 -> 14.6575) while idle goes 11.48% -> 16.79%.
     The first-touch round costs 0.31 s of wall and 0.001 s of work, so it is I/O and not
     warm-up of anything the CPU does — an independent corroboration that the gap is the read.
+
+== §U: go-opt-round-3-park — the revive-trigger sweep, and the two triggers it tested =====
+
+No benchmark runs here. This section holds the checks that decide whether a parked
+entry's revive trigger has fired, because a trigger tested by reasoning is not tested.
+Two of the five entries' triggers needed a real check; the other three are arithmetic
+against numbers already in this file (P-04 against 02-baseline's 754.4 ms read floor,
+P-05 against §T's worker-wall skew).
+
+  --- U.1: P-01 / P-02 trigger (a), "a Go release exposes the vector-to-general move
+      as an intrinsic". Tested against the installed toolchain, not from memory. ---
+
+  $ go version
+  go version go1.27.0 darwin/arm64
+
+  $ go env GOEXPERIMENT
+  (empty)
+
+  $ ls $(go env GOROOT)/src/simd/ | grep -i 'arm64\|amd64'
+  midway_amd64.go
+  midway_arm64.go
+  sum_amd64_test.go
+  tofrom_amd64.go
+  tofrom_arm64.go
+
+  So go1.27.0 DOES ship a simd package with arm64 support. $GOROOT/src/simd/doc.go
+  carries `//go:build goexperiment.simd`, so it is experiment-gated and off by default.
+
+  $ grep -rn 'ToBits() uint' $(go env GOROOT)/src/simd/archsimd/*amd64*.go | head -4
+  /usr/local/go/src/simd/archsimd/types_amd64.go:264:func (x Mask8x16) ToBits() uint16
+  /usr/local/go/src/simd/archsimd/types_amd64.go:280:func (x Mask16x8) ToBits() uint8
+  /usr/local/go/src/simd/archsimd/types_amd64.go:298:func (x Mask32x4) ToBits() uint8
+  /usr/local/go/src/simd/archsimd/types_amd64.go:316:func (x Mask64x2) ToBits() uint8
+
+  $ grep -rn 'ToBits() uint\|) AnyTrue\|) FirstTrue\|) Bits()' $(go env GOROOT)/src/simd/archsimd/*arm64*.go
+  (no matches)
+
+  $ grep -n 'func (x Mask8x16)' $(go env GOROOT)/src/simd/archsimd/ops_arm64.go
+  2140:func (x Mask8x16) And(y Mask8x16) Mask8x16
+  2142:func (x Mask8x16) Or(y Mask8x16) Mask8x16
+  2144:func (x Mask8x16) Not() Mask8x16
+
+  The compile probe, which is the check that cannot be misread. /tmp/simdprobe/go.mod is
+  `module simdprobe` + `go 1.27`; /tmp/simdprobe/main.go is:
+
+      package main
+
+      import (
+          "fmt"
+
+          "simd/archsimd"
+      )
+
+      func main() {
+          var m archsimd.Mask8x16
+          fmt.Println(m.ToBits())
+      }
+
+  $ cd /tmp/simdprobe && go build ./...
+  package simdprobe
+      imports simd/archsimd: build constraints exclude all Go files in /usr/local/go/src/simd/archsimd
+
+  $ GOEXPERIMENT=simd go build ./...
+  # simdprobe
+  ./main.go:11:16: m.ToBits undefined (type archsimd.Mask8x16 has no field or method ToBits)
+
+  $ GOEXPERIMENT=simd GOARCH=amd64 go build ./...
+  (exit 0, no output)
+
+  VERDICT: the trigger fired on the wrong architecture. Vector intrinsics arrived; the
+  mask-to-general-register move that arm64 lacks in hardware is amd64-only in the API
+  too, so P-01's measured 1.080 ns/row transfer is not deleted and both entries stay
+  parked. The identical source building at GOARCH=amd64 is what rules out a probe error.
+
+  --- U.2: P-01 revive trigger (c), "an input whose names average over ~32 bytes, where
+      the window advantage is largest" — the clause CORRECTIONS.md C12 retires. ---
+
+  The mean is re-measured on the file itself rather than taken from the report, over a
+  2,000,000-row prefix of the 10k-station file (the names are drawn from a 10,000-key set,
+  so a 2M-row sample is far past saturation for a mean):
+
+  $ cd /Users/noelruault/Downloads/1brc/1brc-assets && head -c 200000000 \
+      measurements-10k-stations-242m.txt | head -2000000 \
+      | awk -F';' '{n=length($1); s+=n; c++; if(n>mx)mx=n} \
+                    END {printf "rows=%d mean_name_bytes=%.4f max=%d\n", c, s/c, mx}'
+  rows=2000000 mean_name_bytes=51.1046 max=100
+
+  That reproduces 04-asm-kernels.md:92's 51.1-byte mean for gen.Synthetic10k to 0.01 B,
+  measured on the 13.8 GB file rather than on the kernel corpus. So the input the trigger
+  asks for exists and was already measured: 04-asm-kernels.md:31 has per-row NEON losing
+  by 23.1% there against 16.3% on the 8.0-byte official set. Long names are this entry's
+  WORST case. The trigger cannot revive it and is struck.
