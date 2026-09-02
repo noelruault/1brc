@@ -369,3 +369,73 @@ $ uptime
   session's own tooling, not a quiet machine. What should be trusted from this report
   is the ORDERING of the I/O strategies and the order of magnitude of the floor, not
   any single millisecond figure. The headline is re-measured on AC at final-dod.
+
+# ============================================================================
+# go-opt-round-3-10k — the 10,000-station file the queue's blocked half needs
+# ============================================================================
+#
+# Queue items 8, 9, 12 and item 10's open half all wait on "a 1b-row 10k file".
+# That file is not the one they want. The 10k key set costs 57.09 bytes per row
+# against the official set's 13.80, so a BILLION-row 10k file is 57.09 GB, 2.22x
+# this machine's RAM, with a 3.12 s read floor at the measured 18.29 GB/s -- three
+# times over target before any compute, which answers a different question.
+#
+# So this file holds BYTES constant, not rows: 241,600,000 rows reproduces the 1b
+# file's size and therefore its memory regime, which is what items 9, 10 and 12
+# are actually asking about. It is a MECHANISM file. E-09 forbids ranking arms on
+# anything but the 1b file, so experiment.sh stamps every run on it NOT A VERDICT,
+# and anything kept here must be re-measured at 1b before it becomes a default.
+
+## The row-count arithmetic, evaluated rather than asserted
+
+$ python3 -c 'print(570941611/10000000)'          # bytes per row, from the 10k 10m file above
+  57.0941611
+
+$ python3 -c 'print(round(13795610267/57.0941611))'   # rows that match measurements-1b.txt's size
+  241629091
+
+  Rounded down to 241,600,000 (0.012% fewer rows). The file that came out is
+  57.1133138 B/row and 13,798,576,606 B, +0.0215% against measurements-1b.txt's
+  13,795,610,267 B: the same 53.5% of 24 GiB of RAM, which is the regime the
+  items wanted held.
+
+## Generation
+
+$ cd 1brc/code/gen && go run ./cmd/measurements -rows 241600000 \
+    -out $ASSETS/measurements-10k-stations-242m.txt -keyset 10k -seed 1
+rows=241600000 stations=10000 stddev=7.0 seed=1 bytes=13798576606 elapsed=8.23s rate=1599.0 MB/s
+
+  Seed 1 with keyset 10k reproduces it byte for byte. Note the rate: 1599 MB/s,
+  not the 725 MB/s the 413-station files generate at, because the 10k names are
+  longer, so the same bytes cost fewer rows and fewer PRNG draws.
+
+## Verification
+
+$ wc -l < $ASSETS/measurements-10k-stations-242m.txt
+  241600000
+
+$ openssl dgst -sha256 $ASSETS/measurements-10k-stations-242m.txt
+SHA2-256(measurements-10k-stations-242m.txt)= ab9b34839d56654668a480e2c90784aedd4fd12fd7f335968dac1ab55ea9bd11
+
+$ df -h /Users/noelruault/Downloads | tail -1      # before generating it
+/dev/disk3s5   926Gi   550Gi   334Gi    63%    5.4M  3.5G    0%   /System/Volumes/Data
+
+## Reference (expected) output
+
+$ cd 1brc/code/gen && go build -o /tmp/1brc-reference ./cmd/reference
+$ /usr/bin/time -p /tmp/1brc-reference -in $ASSETS/measurements-10k-stations-242m.txt \
+    > 1brc/testdata/expected-10k-stations-242m.out
+real 15.07
+user 16.61
+sys 1.77
+
+  688003 bytes, 10000 entries (tr -cd '=' | wc -c). 62.4 ns/row single-threaded,
+  against the 39.8 ns/row the same reference managed on the 413-station file:
+  the 10k map is bigger than any cache that matters and the names are 4x longer.
+
+  This is what makes the file gateable. check-correctness.sh takes extra cases
+  through CASES_EXTRA and experiment.sh fills it from -f when a reference output
+  for that file exists, so an arm timed on this file is byte-compared on THIS
+  file, not only on the two 10m cases. The 1b file has no reference output --
+  the 413 set already measures 39.8 ns/row, so ~40 s -- so the default regime is
+  unaffected and still gates on the two 10m cases alone.

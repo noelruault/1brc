@@ -1,0 +1,48 @@
+# experiment 2026-09-02T010530Z
+hypothesis: queue item 9 - Go runtime map at 10,000 stations
+prediction: derived from 05-go-techniques.md: the map beat the best array by 3.7% on 10k names single-threaded, and E-26/E-32 put (*table).update at 12.5-14.1% plus memequal at 8.8-9.9% of non-syscall CPU, so the whole probe is a 21-24% pot and a ceiling near 11% of compute if the map halved it; predicted -1% to -4% of wall, and a map that is merely equal end-to-end kills the item
+file:     measurements-10k-stations-242m.txt   runs: 5   warmup: 1   cooldown: 20s
+NOT A VERDICT: --mechanism-only on the 10k-stations-242m file, E-09 forbids ranking arms here
+commit:   f3f32236964ddff04f3aa384d4cf26d1549b7a78
+go:       go version go1.27.0 darwin/arm64
+machine:  Apple M5 Pro, hw.ncpu 15, 24 GiB, 26.5.2 arm64
+hyperfine: hyperfine 1.20.0
+power:    'AC Power' 	100%; charged; 0:00 remaining present: true
+load:      3:05  up 1 day, 17:24, 19 users, load averages: 3.72 2.29 1.94
+
+$ default.a: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-10k-stations-242m.txt  > /dev/null
+$ map: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-10k-stations-242m.txt -table map > /dev/null
+$ default.b: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-10k-stations-242m.txt  > /dev/null
+
+Benchmark 1: default.a
+  Time (mean ± σ):      1.276 s ±  0.023 s    [User: 13.860 s, System: 1.516 s]
+  Range (min … max):    1.256 s …  1.313 s    5 runs
+ 
+Benchmark 2: map
+  Time (mean ± σ):      1.113 s ±  0.010 s    [User: 11.850 s, System: 1.432 s]
+  Range (min … max):    1.097 s …  1.125 s    5 runs
+ 
+Benchmark 3: default.b
+  Time (mean ± σ):      1.277 s ±  0.019 s    [User: 13.863 s, System: 1.514 s]
+  Range (min … max):    1.262 s …  1.309 s    5 runs
+ 
+Summary
+  map ran
+    1.15 ± 0.02 times faster than default.a
+    1.15 ± 0.02 times faster than default.b
+
+== ledger row skeleton, paste into 07-experiment-ledger.md and write the verdict ==
+
+### E-NN — queue item 9 - Go runtime map at 10,000 stations
+
+- **Idea:** 
+- **Prediction:** derived from 05-go-techniques.md: the map beat the best array by 3.7% on 10k names single-threaded, and E-26/E-32 put (*table).update at 12.5-14.1% plus memequal at 8.8-9.9% of non-syscall CPU, so the whole probe is a 21-24% pot and a ceiling near 11% of compute if the map halved it; predicted -1% to -4% of wall, and a map that is merely equal end-to-end kills the item
+- **Measured, invocation 2026-09-02T010530Z (10k-stations-242m, 5 runs, one hyperfine invocation):**
+
+  | Command | Mean [s] | Min [s] | Max [s] | Relative |
+  |:---|---:|---:|---:|---:|
+  | `default.a` | 1.276 ± 0.023 | 1.256 | 1.313 | 1.15 ± 0.02 |
+  | `map` | 1.113 ± 0.010 | 1.097 | 1.125 | 1.00 |
+  | `default.b` | 1.277 ± 0.019 | 1.262 | 1.309 | 1.15 ± 0.02 |
+
+- **Verdict:** 
