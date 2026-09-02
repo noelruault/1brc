@@ -1256,10 +1256,25 @@ P-05 against §T's worker-wall skew).
   $ GOEXPERIMENT=simd GOARCH=amd64 go build ./...
   (exit 0, no output)
 
+  MUTATED, because a compile failure has several possible causes and the interesting one
+  has to be isolated from the boring ones. Replacing only the method call with one the
+  arm64 mask type DOES have — fmt.Println(m.Not().String()) instead of m.ToBits() — and
+  rebuilding at the same GOARCH=arm64:
+
+  $ GOEXPERIMENT=simd go build ./...
+  (exit 0, no output)
+
+  So there are TWO controls on the one claim: the same source builds at GOARCH=amd64
+  (the failure tracks the architecture), and the same file with an existing method
+  builds at GOARCH=arm64 (the failure tracks the missing method, not the import path,
+  the module, or the experiment flag). Without the second control the probe would have
+  been consistent with "simd/archsimd does not work on arm64 at all", which is a
+  different and much stronger claim than the one recorded.
+
   VERDICT: the trigger fired on the wrong architecture. Vector intrinsics arrived; the
   mask-to-general-register move that arm64 lacks in hardware is amd64-only in the API
   too, so P-01's measured 1.080 ns/row transfer is not deleted and both entries stay
-  parked. The identical source building at GOARCH=amd64 is what rules out a probe error.
+  parked.
 
   --- U.2: P-01 revive trigger (c), "an input whose names average over ~32 bytes, where
       the window advantage is largest" — the clause CORRECTIONS.md C12 retires. ---
