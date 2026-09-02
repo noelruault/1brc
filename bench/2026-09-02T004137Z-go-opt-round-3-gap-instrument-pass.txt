@@ -1,0 +1,186 @@
+commit:   9dcf38d3b69b2c995fa2d8442ba79fb0cb630820
+go:       go version go1.27.0 darwin/arm64
+machine:  Apple M5 Pro, hw.ncpu 15, 24 GiB, 26.5.2 arm64
+hyperfine: hyperfine 1.20.0
+power:    'AC Power' 	100%; finishing charge; 0:00 remaining present: true
+load:      2:35  up 1 day, 16:54, 19 users, load averages: 1.61 1.66 1.95
+note:     shipped default = -workers 20 -buf 1024 -parse word -fold ptr (no flags passed; defaults read from the binary)
+note:     round-robin P(hases)/C(puprofile), 20 s settle before every timed run, round 1 discarded as the first-touch outlier
+
+=== round 0 -phases ===
+$ /usr/bin/time -l /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in $ASSETS/measurements-1b.txt -phases > /dev/null
+phases: workers=20 chunks=13160 read=8.512064654s fold=15.464526364s read/(read+fold)=35.5%
+phases: worker wall min=1.196314709s p50=1.200715875s max=1.207447875s sum=24.01996271s skew(max/min)=1.009 merge=2.358416ms
+        1.53 real        14.66 user         1.54 sys
+           156237824  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+                9817  page reclaims
+                   0  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                  88  signals received
+               13314  voluntary context switches
+               59865  involuntary context switches
+        279496391451  instructions retired
+         69421161427  cycles elapsed
+           154583760  peak memory footprint
+
+=== round 0 -cpuprofile ===
+$ /usr/bin/time -l /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in $ASSETS/measurements-1b.txt -cpuprofile /tmp/gap-prof-0.out > /dev/null
+        1.42 real        14.67 user         1.53 sys
+           156745728  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+                9763  page reclaims
+                   0  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                1235  signals received
+               13196  voluntary context switches
+               51455  involuntary context switches
+        279139675219  instructions retired
+         69405263479  cycles elapsed
+           154976904  peak memory footprint
+
+=== round 1 -phases ===
+$ /usr/bin/time -l /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in $ASSETS/measurements-1b.txt -phases > /dev/null
+phases: workers=20 chunks=13160 read=8.472885296s fold=15.430483985s read/(read+fold)=35.4%
+phases: worker wall min=1.189570542s p50=1.197200291s max=1.200626416s sum=23.923356624s skew(max/min)=1.009 merge=2.280875ms
+        1.20 real        14.69 user         1.44 sys
+           155844608  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+                9718  page reclaims
+                   0  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                  86  signals received
+               13277  voluntary context switches
+               54440  involuntary context switches
+        279169324191  instructions retired
+         69149842380  cycles elapsed
+           154124912  peak memory footprint
+
+=== round 1 -cpuprofile ===
+$ /usr/bin/time -l /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in $ASSETS/measurements-1b.txt -cpuprofile /tmp/gap-prof-1.out > /dev/null
+        1.42 real        14.75 user         1.52 sys
+           156762112  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+                9756  page reclaims
+                   0  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                1239  signals received
+               13181  voluntary context switches
+               52467  involuntary context switches
+        279148227770  instructions retired
+         69692732916  cycles elapsed
+           154993288  peak memory footprint
+
+=== round 2 -phases ===
+$ /usr/bin/time -l /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in $ASSETS/measurements-1b.txt -phases > /dev/null
+phases: workers=20 chunks=13160 read=8.741550512s fold=15.394158255s read/(read+fold)=36.2%
+phases: worker wall min=1.204605417s p50=1.209326791s max=1.2139585s sum=24.177329706s skew(max/min)=1.008 merge=3.090375ms
+        1.22 real        14.64 user         1.43 sys
+           155779072  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+                9705  page reclaims
+                   0  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                  34  signals received
+               13184  voluntary context switches
+               55767  involuntary context switches
+        279068573919  instructions retired
+         68823565562  cycles elapsed
+           154059376  peak memory footprint
+
+=== round 2 -cpuprofile ===
+$ /usr/bin/time -l /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in $ASSETS/measurements-1b.txt -cpuprofile /tmp/gap-prof-2.out > /dev/null
+        1.41 real        14.67 user         1.47 sys
+           157188096  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+                9920  page reclaims
+                   0  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                1255  signals received
+               13243  voluntary context switches
+               53534  involuntary context switches
+        279219516611  instructions retired
+         69130212956  cycles elapsed
+           155402864  peak memory footprint
+
+=== round 3 -phases ===
+$ /usr/bin/time -l /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in $ASSETS/measurements-1b.txt -phases > /dev/null
+phases: workers=20 chunks=13160 read=8.805337361s fold=15.421778221s read/(read+fold)=36.3%
+phases: worker wall min=1.205330666s p50=1.213026916s max=1.220792542s sum=24.270777583s skew(max/min)=1.013 merge=3.159583ms
+        1.22 real        14.64 user         1.49 sys
+           155779072  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+                9699  page reclaims
+                   0  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                  33  signals received
+               13176  voluntary context switches
+               53081  involuntary context switches
+        279122630236  instructions retired
+         69039481234  cycles elapsed
+           154059376  peak memory footprint
+
+=== round 3 -cpuprofile ===
+$ /usr/bin/time -l /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in $ASSETS/measurements-1b.txt -cpuprofile /tmp/gap-prof-3.out > /dev/null
+        1.31 real        14.69 user         1.45 sys
+           156598272  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+                9745  page reclaims
+                   0  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                1217  signals received
+               13178  voluntary context switches
+               54166  involuntary context switches
+        279115583525  instructions retired
+         69075882281  cycles elapsed
+           154813040  peak memory footprint
+
+load at end:  2:38  up 1 day, 16:57, 19 users, load averages: 1.99 1.79 1.94
