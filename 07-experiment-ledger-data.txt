@@ -1158,3 +1158,32 @@ The eight runs, verbatim from that file (round 0 of each is the discarded outlie
   profiled vs unprofiled: +0.015%  (against +13.74% of wall)
   spread over all eight runs: 0.153%
   instructions per row, 1e9 rows: 279.1
+
+  --- §T addendum, added by this cycle's own review gate ---
+  e32-decompose.py gained the CLOSURE line below: the identity above cannot fail (idle is DEFINED as
+  capacity - user - sys), so the check that can fail is whether the -phases clocks close on worker
+  wall. Re-run of the same committed log:
+
+    CLOSURE, the one check here that can fail: sum(worker wall)/(read+fold) = 1.0008 (E-31 measured 1.0011 for the same -fill off shape); idle >= 0 is True
+    CLOSURE, the one check here that can fail: sum(worker wall)/(read+fold) = 1.0017 (E-31 measured 1.0011 for the same -fill off shape); idle >= 0 is True
+    CLOSURE, the one check here that can fail: sum(worker wall)/(read+fold) = 1.0018 (E-31 measured 1.0011 for the same -fill off shape); idle >= 0 is True
+
+  --- §T mutation check, run by this cycle's own review gate ---
+  Two mutants, because a check that cannot fail is not a check.
+
+  Mutant A — a -phases clock that does not close (one round's read inflated 10%):
+    $ sed 's/read=8.472885296s/read=9.320173826s/' <log> > /tmp/mut-a.txt
+    $ python3 1brc/scripts/e32-decompose.py /tmp/mut-a.txt | grep -m1 CLOSURE
+    CLOSURE, the one check here that can fail: sum(worker wall)/(read+fold) = 0.9666 (E-31 measured 1.0011 for the same -fill off shape); idle >= 0 is True
+    CAUGHT: 1.0008 -> 0.9666.
+
+  Mutant B — the round-0 first-touch exclusion removed from e32-ceilings.py:
+    $ sed "s/    if rnd == '0':/    if False:/" 1brc/scripts/e32-ceilings.py > /tmp/mut-b.py && python3 /tmp/mut-b.py
+    capacity 19.3875 core-s ; user 14.6575 ; sys 1.4750 ; idle 3.2550
+    compute floor U/15 = 0.9772s ; wall above it 24.40%
+    perfect-packing wall (U+S)/15 = 1.0755s  -> -16.79% of wall, and +7.55% against the 1.000 s target
+    CAUGHT: the headline gap goes 19.47% -> 24.40%, so the exclusion is load-bearing.
+    And the SHAPE of the damage is itself a finding: the compute floor barely moves
+    (0.9771 -> 0.9772 s, user CPU 14.6567 -> 14.6575) while idle goes 11.48% -> 16.79%.
+    The first-touch round costs 0.31 s of wall and 0.001 s of work, so it is I/O and not
+    warm-up of anything the CPU does — an independent corroboration that the gap is the read.

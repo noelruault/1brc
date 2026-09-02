@@ -1,8 +1,21 @@
 # e32-ceilings.py — the ceilings and extrapolations E-32 quotes, evaluated rather than written in prose.
 # Inputs are the three -phases rounds' means from e32-decompose.py and E-31's off-w15 phases pass.
+import re, statistics as st, sys
+
 C = 15
 BYTES = 13795610267
-W, U, S, R, F = 1.2133, 14.6567, 1.4533, 8.6733, 15.4155
+# Read the same committed log e32-decompose.py reads: a second file restating numbers computed
+# elsewhere drifts silently, which this study has already paid for once in a test helper.
+LOG = sys.argv[1] if len(sys.argv) > 1 else '1brc/bench/2026-09-02T004137Z-go-opt-round-3-gap-instrument-pass.txt'
+rows = []
+for m in re.finditer(r'=== round (\d+) -phases ===(.*?)(?=\n=== round|\nload at end)', open(LOG).read(), re.S):
+    rnd, body = m.groups()
+    if rnd == '0':
+        continue
+    t = re.search(r'([\d.]+) real\s+([\d.]+) user\s+([\d.]+) sys', body)
+    p = re.search(r'read=([\d.]+)s fold=([\d.]+)s', body)
+    rows.append([float(x) for x in t.groups()] + [float(x) for x in p.groups()])
+W, U, S, R, F = (round(st.mean(c), 4) for c in zip(*rows))
 cap = C * W
 idle = cap - U - S
 print(f"capacity {cap:.4f} core-s ; user {U:.4f} ; sys {S:.4f} ; idle {idle:.4f}")

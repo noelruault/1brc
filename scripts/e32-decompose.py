@@ -34,6 +34,7 @@ for r in ph:
     print(f"          compute floor user/{CORES} = {U/CORES:.4f}s; wall above it = {(W-U/CORES)/W*100:.2f}% ; identity check (sys+idle)/capacity = {(S+idle)/cap*100:.2f}%")
     print(f"          workers blocked in pread at any instant = read/wall = {r['read']/W:.2f} of 20 ; in fold = {r['fold']/W:.2f} ; cores busy = (user+sys)/wall = {(U+S)/W:.2f} of 15")
     print(f"          fold wall {r['fold']:.3f}s vs total user CPU {U:.2f}s -> at least {r['fold']-U:.3f} core-s of fold time is descheduled ({(r['fold']-U)/r['fold']*100:.2f}% of fold)")
+    print(f"          CLOSURE, the one check here that can fail: sum(worker wall)/(read+fold) = {r['wsum']/(r['read']+r['fold']):.4f} (E-31 measured 1.0011 for the same -fill off shape); idle >= 0 is {idle >= 0}")
     print(f"          outside the worker phase: wall - MAX worker wall = {W - r['wmax']:+.4f}s, against /usr/bin/time's 0.01 s wall resolution; the merge is instrumented directly at {r['merge']*1000:.2f}ms")
     print()
 
