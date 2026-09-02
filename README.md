@@ -13,7 +13,7 @@
 | reader configuration | `-workers 20 -buf 1024 -split static -io pread -nocache=true -parse word -fold ptr -table combined -bits 17 -kernel row -fill off` |
 | compute floor at perfect parallelism | **0.9812 s**, below the target since E-27 |
 | measured read floor | **0.754 s**, 61.2% of the wall clock |
-| parallel efficiency | **79.6%** (11.94 of 15 cores busy) |
+| parallel efficiency | **79.6%** (11.94 of 15 cores busy), at the 1.233 s figure |
 | correctness | byte-identical to the reference on 10m (413 and 10,000 stations), 242m (10,000 stations) and **1b (413 stations)** |
 | where it started | 2.607 s at 100m for the skeleton; 1.742 s at 1b for v1 |
 
@@ -21,7 +21,7 @@
 
 ## Method
 
-Definition from the source, then a physical baseline, then kernel research, then an autoresearch optimization loop: **hypothesis queue → one experiment → one metric → keep/kill → ledger row → re-rank**. 36 ledger rows, each with a prediction written before the run. The rules the harness enforces, all of them bought with a measurement:
+Definition from the source, then a physical baseline, then kernel research, then an autoresearch optimization loop: **hypothesis queue → one experiment → one metric → keep/kill → ledger row → re-rank**. 36 ledger rows; **27 of them carry a prediction written before the run**, and the 9 that do not are the meta-results and instrument passes (E-09, E-11, E-18, E-19, E-20, E-21, E-22, E-26, E-32), which measure the study or the machine rather than an arm and so have nothing to predict. The rules the harness enforces, all of them bought with a measurement:
 
 - A delta is taken only inside ONE bracketed hyperfine invocation, with the incumbent named **first and last**, 20 s of cooldown before every timed 1b run. Eight identical arms without that rank monotonically by **21.08%** (E-16).
 - A bracket wider than 3% is a **refusal to quote any arm**, never a correction factor. A derived slot correction once produced six numbers and re-measurement falsified five of them (E-18 vs E-23).
@@ -53,8 +53,9 @@ Every report has a `*-data.txt` companion holding the raw output **and** the com
 
 ## Running it
 
+From the repo root; both scripts build `1brc/code/go/bin/1brc` themselves.
+
 ```
-cd 1brc/code/go && go build -o bin/1brc .
 bash 1brc/scripts/check-correctness.sh
 FILES=1b RUNS=5 WARMUP=1 bash 1brc/scripts/bench.sh <label>
 ```

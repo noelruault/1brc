@@ -51,7 +51,7 @@ One consequence is worth naming because it changed a measurement in this same cy
 
 ## What was tried
 
-36 ledger rows, each with a prediction written before the run. The full table is [`07-experiment-ledger.md`](07-experiment-ledger.md); the shape of it is that the verdict lines carry **KEEP 11 times and KILLED-on-numbers 8 times** (tokens, not rows: E-17 alone carries two verdicts, and the histogram's command is in `08-method-what-worked-data.txt` §1), and the rows that changed the study most were the ones that measured the method rather than the program: E-09 (a 10× smaller file ranks nothing: seven arms, seven disagreements), E-11 (a differently-shaped microbenchmark baseline is a fact about two other programs: a 50-point swing), E-16 (eight identical arms rank monotonically by 21.08%), E-18 versus E-23 (a derived slot correction produced six numbers, five of which re-measurement falsified), E-19 (recording a machine's state is not refusing to measure on it).
+36 ledger rows, **27 of them carrying a prediction written before the run**; the other 9 are the meta-results and instrument passes (E-09, E-11, E-18, E-19, E-20, E-21, E-22, E-26, E-32), which have no arm to predict. The full table is [`07-experiment-ledger.md`](07-experiment-ledger.md); the shape of it is that the verdict lines carry **KEEP 11 times and KILLED-on-numbers 8 times** (tokens, not rows: E-17 alone carries two verdicts, and the histogram's command is in `08-method-what-worked-data.txt` §1), and the rows that changed the study most were the ones that measured the method rather than the program: E-09 (a 10× smaller file ranks nothing: seven arms, seven disagreements), E-11 (a differently-shaped microbenchmark baseline is a fact about two other programs: a 50-point swing), E-16 (eight identical arms rank monotonically by 21.08%), E-18 versus E-23 (a derived slot correction produced six numbers, five of which re-measurement falsified), E-19 (recording a machine's state is not refusing to measure on it).
 
 What actually moved the wall clock, in order: oversubscribing the cores to `NumCPU()*4/3` (−7.49%), the read buffer down to 1 MiB (−6.4% of wall with user CPU flat, bought parallel efficiency), folding the format check into the word the parse already loaded (−4.97% of wall from −6.33% of user CPU), and walking the fold with `unsafe.Add` with the name hash fused into the separator scan (E-27, the arm that took the compute floor under 1.000 s for the first time). What did not: mmap (5.6×), a shared cursor over segments, a split hash/entry table, batch tokenization in both SWAR and NEON, a bigger read buffer, a smaller table, the page cache, Go's runtime map at 413 stations (+52.20%), and double-buffered workers (+0.57% against a ceiling that had been re-derived four times).
 
@@ -61,10 +61,11 @@ What actually moved the wall clock, in order: oversubscribing the cores to `NumC
 
 ## Reproducing any of it
 
+All of these run from the REPO ROOT, and each builds `1brc/code/go/bin/1brc` itself, so there is no `cd` to get wrong.
+
 ```
-cd 1brc/code/go && go build -o bin/1brc .
-bash 1brc/scripts/check-correctness.sh                     # byte-compare, all committed cases
-FILES=1b RUNS=5 WARMUP=1 bash 1brc/scripts/bench.sh label   # one configuration, no cooldown
+bash 1brc/scripts/check-correctness.sh                      # byte-compare; add CASES_EXTRA='<data>|<expected>' for a fourth case
+FILES=1b RUNS=5 WARMUP=1 bash 1brc/scripts/bench.sh <label>  # one configuration, no cooldown
 bash 1brc/scripts/experiment.sh -i '<id>' -p '<prediction>' -a 'incumbent=' -a 'arm=<flags>'
 ```
 

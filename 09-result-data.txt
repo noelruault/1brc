@@ -194,3 +194,55 @@ spec.md:56-68. One block per line of the DoD, in the order the spec writes them.
 - The residual between the published headline and the final-dod re-measure has no named
   mechanism. E-36 prices one contributor (the 1b correctness read this ticket inserted)
   and refuses to invent one for the rest; see 07-experiment-ledger.md E-35/E-36.
+
+==============================================================================
+§5  ADDED BY THIS GROUP'S OWN REVIEW GATE
+==============================================================================
+
+-- the 1b reference output is MUTATION-TESTED, because a committed expected file that
+   cannot fail is not a check --
+   One byte flipped inside the first station's min value, then the gate re-run:
+   $ python3 -c "<flip one digit in expected-1b.out>"     # mutated byte 8, '1' -> '0'
+   $ CASES_EXTRA="measurements-1b.txt|expected-1b.out" bash 1brc/scripts/check-correctness.sh
+     check-correctness: OK   measurements-10m.txt (413 stations, 0s)
+     check-correctness: OK   measurements-10k-stations-10m.txt (10000 stations, 0s)
+     check-correctness: FAIL measurements-1b.txt
+     exit=1   (the mutant is CAUGHT)
+   $ <restore the original>
+     check-correctness: OK   measurements-1b.txt (413 stations, 1s)
+     exit=0
+
+-- the 242m case, which 09-result.md's correctness table asserts, verified DIRECTLY at
+   this commit rather than quoted from E-33 --
+   $ CASES_EXTRA="measurements-10k-stations-242m.txt|expected-10k-stations-242m.out" \
+       bash 1brc/scripts/check-correctness.sh
+     check-correctness: OK   measurements-10m.txt (413 stations, 0s)
+     check-correctness: OK   measurements-10k-stations-10m.txt (10000 stations, 0s)
+     check-correctness: OK   measurements-10k-stations-242m.txt (10000 stations, 2s)
+     exit=0
+
+-- the published reader configuration checked against the binary's actual defaults,
+   because a reader will paste it --
+   $ grep -nE 'defaultWorkers|defaultBufKiB|defaultParse|defaultFold|defaultFill' 1brc/code/go/main.go
+     64:func defaultWorkers() int { return runtime.NumCPU() * 4 / 3 }     # 20 on 15 cores
+     68:const defaultBufKiB = 1024
+     72:const defaultParse = "word"
+     76:const defaultFold  = "ptr"
+     79:const defaultFill  = "off"
+   plus flag defaults bits=17, nocache=true, split=static, table=combined, io=pread,
+   kernel=row. That is exactly the configuration 09-result.md and 1brc/README.md publish.
+
+-- the prediction claim, which the review found OVERSTATED and repaired at three sites --
+   $ grep -c '^### E-' 1brc/07-experiment-ledger.md            -> 36
+   $ grep -c '^- \*\*Prediction' 1brc/07-experiment-ledger.md  -> 27
+   The 9 rows without one are E-09, E-11, E-18, E-19, E-20, E-21, E-22, E-26 and E-32,
+   enumerated by:
+   $ awk '/^### E-/{if(id!=""&&!p)print id; id=$0; p=0} /^- \*\*Prediction/{p=1} END{if(id!=""&&!p)print id}' 1brc/07-experiment-ledger.md
+   Every one is a meta-result or an instrument pass with no arm to predict. The first
+   draft of 09-result.md, 1brc/README.md and the root README.md all said "each with a
+   prediction written before the run"; all three are corrected.
+
+-- PARKED.md's seven fields present on all nine entries --
+   $ grep -cE '^## P-[0-9]+ .*· `(parked|killed|subsumed|blocked)`' 1brc/PARKED.md   -> 9
+   $ for f in 'What it is' 'Why ' 'Depends on' 'Revive when' 'Cost to revive' 'Where'; \
+       do grep -cE "^\*\*$f" 1brc/PARKED.md; done                                    -> 9 each

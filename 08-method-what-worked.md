@@ -97,7 +97,7 @@ A second correction discipline is subtler and cost more: **every DERIVED figure 
 
 The study missed its target: **1.233 s against 1.000 s, +23.3%.** The temptation at the end of a round is to put something on the board where the gap is. Round 3 did not. The separator scan is 41.57-43.64% of compute, both mechanisms aimed at it were measured and neither kept (item 1's fuse CLOSED not-adopted at +0.81%, item 2's batch tokenizer KILLED at +9.8%/+10.4%), and the round's verdict says in as many words that no third mechanism is invented and there is no parked entry against that pot.
 
-That is what `spec.md:61` buys: an honest miss with the ledger intact is a valid research outcome and an unmeasured claim is not. The final state is nine parked entries with pre-registered tests, twelve corrections, and a gap decomposed with no residual into 80.53% user, 7.99% system and 11.48% idle, of which the system half is closed by a kill that has a number on it.
+That is what `spec.md:61` buys: an honest miss with the ledger intact is a valid research outcome and an unmeasured claim is not. The final state is nine parked entries with pre-registered tests, twelve corrections (thirteen at the branch tip, per the note at the top), and a gap decomposed with no residual into 80.53% user, 7.99% system and 11.48% idle, of which the system half is closed by a kill that has a number on it.
 
 ## What did not work
 

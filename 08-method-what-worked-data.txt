@@ -308,3 +308,28 @@ twice and the code did not') are both code defects and neither line contains the
 phrase. docs/1brc/lessons.md's standing rule is that a statistic over a set nobody
 enumerated survives every arithmetic check, so the report quotes only the two counts
 that are exact: 18 of 18 REPAIRED, and 15 of 18 lines containing the word 'published'.
+
+==============================================================================
+§4  NOTE ADDED BY final-dod, LATER IN THE SAME BRANCH
+==============================================================================
+
+The §1 counts above are the real output of the commands beside them, run at 08's own
+commit. final-dod then added E-35 and E-36 to the ledger, C13 to CORRECTIONS.md and its
+own review line, so the branch tip reads differently. Re-run at the tip:
+
+  $ grep -c '^### E-' 1brc/07-experiment-ledger.md      -> 36  (was 34)
+  $ grep -c '^## C'   1brc/CORRECTIONS.md               -> 13  (was 12)
+  $ grep -c '^- reviewed' docs/1brc/review.md           -> 19  (was 18)
+
+Nothing in 08-method-what-worked.md rests on the totals: every section is grounded in a
+named row or a named defect. The two counts the report leans on are unchanged in kind
+and are re-derived here at the tip:
+
+  $ grep -c '^- reviewed.*REPAIRED' docs/1brc/review.md
+  $ grep -c 'CLEAN' docs/1brc/review.md
+  $ grep -c 'published' docs/1brc/review.md
+
+The verdict histogram is also unchanged by the two new rows: E-35 and E-36 write their
+verdicts in prose rather than in the KEEP / KILLED-on-numbers vocabulary, because neither
+is an arm. Re-run at the tip it still reads 11 KEEP, 8 KILLED-on-numbers, 3 SUPERSEDED,
+3 CONFIRMED, 1 SUBSUMED, 1 SPLIT, 1 PARKED.
