@@ -1,0 +1,310 @@
+08 — Method: what actually worked — data companion
+
+Every number in 08-method-what-worked.md is either a COUNT computed here, or a QUOTE from
+07-experiment-ledger.md / docs/1brc/lessons.md / CORRECTIONS.md whose grep is recorded here.
+All commands are run from the repo root unless the block says otherwise.
+Recorded: 2026-09-02T015135Z, commit deaa0b1, branch 1brc-loop
+Machine state at recording time (this file records no timings, so it is context, not a measurement condition):
+  $ pmset -g batt | head -1  ->  Now drawing from 'AC Power'
+  $ uptime                   ->   3:51  up 1 day, 18:10, 19 users, load averages: 2.07 1.98 1.80
+
+==============================================================================
+§1  THE COUNTS QUOTED IN THE REPORT
+==============================================================================
+
+$ grep -c '^### E-' 1brc/07-experiment-ledger.md
+34
+
+$ grep -c '^## C' 1brc/CORRECTIONS.md
+12
+
+$ grep -c '^## P-' 1brc/PARKED.md
+9
+
+$ grep -c '^- reviewed' docs/1brc/review.md
+18
+
+$ grep -c '^- reviewed.*REPAIRED' docs/1brc/review.md
+18
+
+$ grep -c 'CLEAN' docs/1brc/review.md            # 0 matches, grep exits 1
+0
+
+$ grep -c 'published' docs/1brc/review.md        # review lines naming a published-claim defect
+15
+
+$ grep -c '^- ' docs/1brc/lessons.md             # durable lessons accumulated
+50
+
+$ grep -c '^- ' docs/1brc/built.md               # ids shipped
+21
+
+$ ls 1brc/bench | wc -l                          # benchmark files
+      30
+
+$ grep -l PROVISIONAL 1brc/bench/*.txt | wc -l    # of those, stamped PROVISIONAL
+      12
+
+Verdict tokens across the ledger's verdict lines. This counts TOKENS, not rows: E-17
+carries two verdicts on two lines (-workers 20 KEPT, -buf 8192 KILLED-on-numbers), and
+some lines name a prior row's verdict as well as their own. The report quotes no
+per-verdict total for that reason; it is here because the histogram is the cheap check
+that the ledger's vocabulary did not drift.
+$ grep -h '^- \*\*Verdict' 1brc/07-experiment-ledger.md | grep -oE 'KILLED-on-numbers|KEEP|PARKED|SPLIT|SUPERSEDED|CONFIRMED|SUBSUMED' | sort | uniq -c | sort -rn
+  11 KEEP
+   8 KILLED-on-numbers
+   3 SUPERSEDED
+   3 CONFIRMED
+   1 SUBSUMED
+   1 SPLIT
+   1 PARKED
+
+$ grep -c '^- \*\*Verdict' 1brc/07-experiment-ledger.md
+34
+
+==============================================================================
+§2  POINTER MAP — every figure quoted in the report, and the grep that finds it
+==============================================================================
+
+Format: <report section> :: <grep command> :: <file:line of each hit>.
+Match text is truncated to 200 chars; the line number resolves against the full file.
+
+--- The harness refuses (E-19)
+$ grep -n -- '12.79' 1brc/07-experiment-ledger.md
+225:- **Measured (the second void):** `pmset` flipped to AC between attempts, and macOS answered the charger with `backupd`, Spotlight's `mdbulkimport` and a WorkflowKit / `siriactionsd` / ModelCatalo
+
+--- The harness refuses (E-19)
+$ grep -n -- '4.54-5.06' 1brc/07-experiment-ledger.md
+225:- **Measured (the second void):** `pmset` flipped to AC between attempts, and macOS answered the charger with `backupd`, Spotlight's `mdbulkimport` and a WorkflowKit / `siriactionsd` / ModelCatalo
+
+--- The harness refuses (E-19)
+$ grep -n -- '34.37-38.52' 1brc/07-experiment-ledger.md
+225:- **Measured (the second void):** `pmset` flipped to AC between attempts, and macOS answered the charger with `backupd`, Spotlight's `mdbulkimport` and a WorkflowKit / `siriactionsd` / ModelCatalo
+
+--- The harness refuses (E-19)
+$ grep -n -- 'PPID 1' 1brc/07-experiment-ledger.md
+224:- **Measured (the first void):** the cycle before this one was cut off mid-benchmark and left its 17-minute item-15 invocation running at **PPID 1**. The next cycle, not knowing, ran four 1b instr
+
+--- Null experiment (E-16)
+$ grep -n -- '21.08%' 1brc/07-experiment-ledger.md
+7:**The measurement rule this ledger enforces**: a delta is only ever taken between two arms of the SAME hyperfine invocation, because the identical binary measured 1.667 s in one invocation and 1.717
+200:- **Measured, invocation J (1b, 413 stations, 5 runs each, one hyperfine invocation, [`bench/2026-09-01T163525Z-E-16-the-null-experiment-eight-identical-arms.txt`](bench/2026-09-01T163525Z-E-16-th
+
+--- Null experiment (E-16)
+$ grep -n -- '16.65%' 1brc/07-experiment-ledger.md
+200:- **Measured, invocation J (1b, 413 stations, 5 runs each, one hyperfine invocation, [`bench/2026-09-01T163525Z-E-16-the-null-experiment-eight-identical-arms.txt`](bench/2026-09-01T163525Z-E-16-th
+209:- **The fix works, and the flat user CPU is the evidence, not the wall clock.** The two identical bracket arms differ by **2.54%** across four slots against **18.02%** across four slots without th
+217:- **Measured (the evidence that invocation B has the same drift):** its user CPU rises monotonically with slot — **18.701, 18.979, 20.105, 19.979, 20.585, 20.705, 21.419 s, +14.53%** ([`07-experim
+
+--- Null experiment fix (E-17)
+$ grep -n -- '2.54%' 1brc/07-experiment-ledger.md
+209:- **The fix works, and the flat user CPU is the evidence, not the wall clock.** The two identical bracket arms differ by **2.54%** across four slots against **18.02%** across four slots without th
+
+--- Null experiment fix (E-17)
+$ grep -n -- '0.69% spread' 1brc/07-experiment-ledger.md
+209:- **The fix works, and the flat user CPU is the evidence, not the wall clock.** The two identical bracket arms differ by **2.54%** across four slots against **18.02%** across four slots without th
+
+--- Bracket is a refusal (E-18 -> E-23)
+$ grep -n -- '+0.06%' 1brc/07-experiment-ledger.md
+104:- **Verdict: KILLED-on-numbers** against static-split-at-1b = 1.667 s in invocation B. **[CORRECTED, C8: RE-OPENED. E-23 re-measured `-split cursor` slot-corrected at −0.56% to +0.06%, overlapping
+266:  | `-split cursor` | E-02 KILLED | +21.00% | +19.18% | −0.56% to +0.06% | no |
+269:- **E-18's derivation is itself falsified, and that is the sharper lesson.** It predicted cursor would survive at +19.18% and split at +0.94%; measured, cursor is **+0.06%** and split **+1.49%**. 
+
+--- Bracket is a refusal
+$ grep -n -- '27.37%' 1brc/07-experiment-ledger.md
+249:- **Measured, M ([`bench/2026-09-01T200150Z-…`](bench/2026-09-01T200150Z-queue-item-15-invocation-B-re-measured-with-the-cooldown-on.txt)):** every arm timed, and **the bracket failed: 27.37%.** `
+
+--- Scale does not transfer (E-09)
+$ grep -n -- 'seven arms, seven disagreements' 1brc/07-experiment-ledger.md
+25:- **Iterating on a cheaper proxy.** The obvious speedup is to run the loop on the 100m file at a tenth the cost. E-09 measured that it does not rank arms — seven arms, seven disagreements — so `exp
+151:- **Measured:** **seven arms, seven disagreements.** Every arm above that separates at 1b either inverts at 100m (H3 parse, buffer size, table bits, `F_NOCACHE`) or vanishes into overlapping range
+
+--- Scale does not transfer (E-09)
+$ grep -n -- '5.6×' 1brc/07-experiment-ledger.md
+79:- **8.0 points are system CPU, and they are CLOSED rather than open.** 1.4533 s of kernel time copying 13,795,610,267 B out of the `F_NOCACHE` `pread` into the worker buffers — **9.49 GB/s** [DERIV
+117:- **Measured, invocation C (1b, own anchor):** anchor `pread` **1.717 s** [1.687-1.759], mmap **9.693 s** [9.619-9.827], mmap **+ `MADV_WILLNEED` 10.782 s** [10.702-10.893]. mmap is **5.6× slower*
+151:- **Measured:** **seven arms, seven disagreements.** Every arm above that separates at 1b either inverts at 100m (H3 parse, buffer size, table bits, `F_NOCACHE`) or vanishes into overlapping range
+
+--- Baseline shape (E-11)
+$ grep -n -- '50-point swing' 1brc/07-experiment-ledger.md
+163:- **Idea:** E-10 is a 50-point swing from the microbenchmark that recommended it (−40% predicted, +10% measured). A verdict that large deserves its cause on the record, not a shrug.
+
+--- Baseline shape (E-11)
+$ grep -n -- '−40.4%' 1brc/07-experiment-ledger.md
+157:- **Prediction:** the report handed this forward as the shape to build, at **−40.4% / −40.7%** on the official key set, and named it "the single most load-bearing untested assumption in this repor
+165:- **Two causes, one measured and one hypothesised.** MEASURED: the microbenchmark's baseline was `TokenizeStagedSWAR` — a *single*-needle scan plus a parse, writing 12 bytes of token per row into 
+464:2. **The batch tokenizer** (`04-asm-kernels.md`'s biggest win, −40.4%/−40.7% on the official key set against staged SWAR): a whole-buffer dual-needle kernel emitting a token stream, drained into t
+
+--- Mutation: race gate cost
+$ grep -n -- '5.9 s' docs/1brc/spec.md
+27:  - The `-race` run was added by `go-opt-round-2-item14`, which put a second goroutine inside each worker (`-fill ahead`) handing buffers across a channel. It costs 5.9 s and it is not redundant: m
+
+--- Mutation: sibling guard
+$ grep -n -- 'pendingSep' docs/1brc/lessons.md
+20:- A guard can survive mutation because a SIBLING guard masks it, and then neither is pinned. Here `pendingSep < 0` and `pendingSep+next != end` each caught the other's mutant, so both looked tested
+
+--- Mutation: boundary not branch
+$ grep -n -- 'len(name) > 8' docs/1brc/lessons.md
+42:- The corpus cannot reach a guard whose boundary the real key set never straddles, so mutate the BOUNDARY, not the branch. `long := len(name) > 8` survived a full suite as `> 9` because the 413 set
+
+--- Mutation: unpinned default
+$ grep -n -- 'threshold to 999' docs/1brc/lessons.md
+30:- A guard whose test overrides its default leaves the default unpinned, and that is where the production bug hides. Both preflight defaults survived mutation until they were asserted directly — a m
+
+--- Mutation: build before test
+$ grep -n -- 'does not compile is scored as caught' docs/1brc/lessons.md
+36:- A mutation harness must BUILD before it tests, or a mutant that does not compile is scored as caught. Two guard mutants read as caught here for exactly that reason and both actually survived. Its
+
+--- Mutation: three kinds of survivor
+$ grep -n -- 'EQUIVALENT mutant' docs/1brc/lessons.md
+37:- A surviving mutant is one of three things and they need different answers: a real test gap (fix the test), an EQUIVALENT mutant (a no-op or a slowdown no behavioural test can see — discard it, do
+
+--- Cheap checks 1: novelty claim
+$ grep -n -- 'three reports record it' docs/1brc/lessons.md
+21:- Before writing "no earlier report records X" into a report, grep for X. This cycle published that the Super/Performance core split was unrecorded; three reports record it, one of them the definit
+
+--- Cheap checks 2: arithmetic in prose
+$ grep -n -- 'Three shipped wrong in one cycle' docs/1brc/lessons.md
+22:- Arithmetic written in prose is never re-derived by anyone, so evaluate every derived figure in a shell or `python3 -c` line and paste the output. Three shipped wrong in one cycle and none of them
+
+--- Cheap checks 3: enumerate the set
+$ grep -n -- 'eight readings and a 0.48%' docs/1brc/lessons.md
+51:- Evaluating a figure in a shell does not protect you from computing the right statistic over the WRONG SET, and that is the more expensive error because it survives every arithmetic check. A repro
+
+--- Cheap checks 4: grep the line number
+$ grep -n -- 'Two of four citations' docs/1brc/lessons.md
+46:- Cite line numbers by grepping for the number you are citing, not by remembering where you read it. Two of four citations written into one backlog split were wrong (`07-experiment-ledger.md:41` fo
+
+--- Cheap checks 5: grep every measured sentence
+$ grep -n -- 'existed in no committed file' docs/1brc/lessons.md
+17:- A new kernel is not checked by agreeing with the corpus; it is checked by agreeing with the OTHER kernels on input the corpus cannot express. The first-vs-last-`;` divergence has now shipped thre
+
+--- Cheap checks 6: read the call site (line re-resolved this cycle)
+$ grep -n -- 'validTemp' docs/1brc/lessons.md
+28:- Before proposing that a check be replaced by a cheaper equivalent, read the call site for the check that is ALREADY there. This cycle published "validate from the integer instead of the bytes" as
+
+--- Cheap checks 6: the call site today
+$ grep -n -- 'inRange' 1brc/code/go/table.go
+23:// min and max are int16 because that is what buys the 32 bytes; inRange bounds every value before it reaches here and the const below fails to compile if that range ever outgrows the field.
+276:			if next == 0 || !validTemp(field, next) || !inRange(v) {
+282:			if !ok || !inRange(v) {
+288:			if !ok || !inRange(v) {
+315:		if !ok || !inRange(v) {
+346:		if !ok || !inRange(v) {
+369:		if !ok || !inRange(v) {
+
+--- Cheap checks 7: examples from reasoning
+$ grep -n -- 'three published examples were wrong' docs/1brc/lessons.md
+32:- "N mutants caught" does not say WHICH guard is load-bearing, and the example you write down from reasoning will be wrong. Drop each guard one at a time and measure the input that only IT rejects:
+
+--- Identity that cannot fail
+$ grep -n -- '1.0008-1.0018' docs/1brc/lessons.md
+49:- An arithmetic IDENTITY is not a check, and it is the most convincing thing you will ever write that cannot fail. `wall × cores = user + sys + idle` decomposes a gap exactly, but with `idle` DEFIN
+
+--- Identity that cannot fail: the second mutant
+$ grep -n -- '19.47%' docs/1brc/lessons.md
+49:- An arithmetic IDENTITY is not a check, and it is the most convincing thing you will ever write that cannot fail. `wall × cores = user + sys + idle` decomposes a gap exactly, but with `idle` DEFIN
+
+--- Corrections must reach the backlog (C7)
+$ grep -n -- 'go-opt-round-2-batch' docs/1brc/lessons.md
+29:- A correction recorded in `CORRECTIONS.md` does not reach the backlog line that spawned the item, and the backlog is what the next cycle builds from. C7 corrected item 16's mechanism at the ledger
+
+--- Derived figures are hostages (E-25)
+$ grep -n -- '6.33%' docs/1brc/lessons.md
+34:- Every DERIVED figure on the board is a hostage to the baseline it was derived from, so when an arm moves the baseline, re-derive them in the same cycle. E-25 moved user CPU 6.33% and silently inv
+
+--- A ceiling re-derived is not confirmed (H-14)
+$ grep -n -- '17.6% → 19.1% → 20.4%' docs/1brc/lessons.md
+43:- A DERIVED ceiling is a hypothesis about a mechanism, and re-deriving it against a new baseline refreshes the number while leaving the assumption untested. H-14's ceiling was recomputed four times
+
+--- A ceiling re-derived is not confirmed (H-14)
+$ grep -n -- '+0.57%' docs/1brc/lessons.md
+43:- A DERIVED ceiling is a hypothesis about a mechanism, and re-deriving it against a new baseline refreshes the number while leaving the assumption untested. H-14's ceiling was recomputed four times
+
+--- Park with a quoted test
+$ grep -n -- 'A parked entry must QUOTE' docs/1brc/lessons.md
+52:- A parked entry must QUOTE a pre-registered test, never restate it. The queue already carried item 18's four-slot arm, its "anything over 5% would be a surprise" bar, its second channel and the co
+
+--- Test the trigger against the world
+$ grep -n -- '8.81-9.87%' docs/1brc/lessons.md
+53:- Test a revive trigger against the world instead of reasoning about it, because a stale trigger reads as live. Two fired here in one cheap pass: `memequal` at 8.81-9.87% of compute satisfied P-03'
+
+--- Test the trigger against the world (GOEXPERIMENT)
+$ grep -n -- 'GOEXPERIMENT=simd' docs/1brc/lessons.md
+53:- Test a revive trigger against the world instead of reasoning about it, because a stale trigger reads as live. Two fired here in one cheap pass: `memequal` at 8.81-9.87% of compute satisfied P-03'
+
+--- Refusing to invent a mechanism: the headline
+$ grep -n -- '1.233 s' 1brc/07-experiment-ledger.md
+33:| 1,000,000,000 rows, current default (20 workers, 1 MiB buffer, `-parse word`, `-fold ptr`) | **1.233 s ± 0.010 s** (range 1.220-1.248, 5 runs, 20 s cooldown, bracket 0.072%) — on AC, preflight gr
+53:Derived, from E-27's winning arm: 14.718 s of user CPU for 1.233 s of wall clock is **11.94 cores of 15 busy, 79.6% parallel efficiency**, and **14.72 ns of CPU per row against the 15.00 ns a 1.000
+61:**E-27 clears it, and that inverts the shape of the problem the three paragraphs above describe.** 14.718 s over 15 cores is **0.9812 s**, so the compute floor is **18.8 ms BELOW the 1.000 s target
+67:**The best measured wall clock: 1.233 s ± 0.010 s**, range 1.220-1.248 over 5 runs with a 20 s cooldown between them, on `measurements-1b.txt` (1,000,000,000 rows, 13,795,610,267 B, 13.80 B/row). S
+73:**It reproduced in five independent invocations, which is what the round's verdict actually rests on.** Wall clock, one reading per slot: E-27's arm **1.233 s**; E-28 **1.229 / 1.241 s**; E-29 **1.
+88:**The honest statement, in one paragraph.** The binary reads 13.8 GB and aggregates a billion rows in **1.233 s**, 1.23× the target, at **79.6% parallel efficiency** with **61.2% of the wall clock*
+285:- **Verdict: KEEP, and the default moves to `-parse word`** (pinned by `TestTheDefaultParseFoldsTheCheckIntoTheWord`). The study's best is **1.424 s ± 0.009 s at 1,000,000,000 rows**, not provisio
+310:  | `ptr` | **1.233 s** | 1.220-1.248 | **14.718 s** | **−11.80% / −11.87%** | **−13.49% / −13.67%** | **yes** |
+314:- **Verdict: `ptr` KEPT and the default moves to `-fold ptr`** (pinned by `TestTheDefaultFoldIsThePointerWalk`). The study's best is **1.233 s at 1,000,000,000 rows**, and it beats `hash` disjoint
+319:- **What it does NOT do:** reach the target. 1.233 s of wall against a 0.9812 s floor is 20.4% of scheduling to recover, which is now exactly item 14's territory and is the first time that item's 
+337:- **The control this invocation bought for free.** Its two incumbent slots reproduce E-27's headline ACROSS invocations — 1.229 s and 1.241 s against 1.233 s, −0.32% and +0.65%, user CPU within 0.
+342:- **Prediction, pre-registered:** **−11% to −20.4% of wall** against the incumbent's 1.233 s, landing **0.98-1.10 s**, with user CPU flat to +3% because the mechanism buys parallel efficiency (79.
+404:- **Consequence for the board: item 17 is closed and it hands `go-opt-round-3-gap` a sharper question, not a candidate.** The best arm here is the incumbent, so nothing in this row moves the study
+421:- **Verdict: the gap is NAMED, and two-thirds of it is closed rather than open.** 8.0 of the 19.47 points are the kernel's copy, whose only mechanism is already killed; 11.5 points are idle cores 
+456:- **The control is the strongest in the study so far.** Two incumbent slots at 1.226 s and 1.222 s, 0.33% apart, reproducing E-27's 1.233 s headline and E-29's 14.664 s of user CPU (14.648 s and 1
+461:Ordered by the size of the gap each could close. The gap to shut is **0.742 s**, of which at most **0.988 s** is compute (1.742 measured minus the 0.754 s read floor). **E-20 supersedes that arith
+481:14. **H-14 — double-buffer each worker.** `foldRange` calls `ReadAt`, waits, then folds, in one goroutine, alternating; a reader goroutine filling buffer B while the fold runs on buffer A makes th
+530:| 5 | `unsafe.Add` pointer walks in the fold | **CLOSED — E-27, KEPT, and it is the study's biggest single arm** | **−11.80% / −11.87% of wall and −13.49% / −13.67% of user CPU, disjoint from both
+
+--- Refusing to invent a mechanism: the gap
+$ grep -n -- '+23.3%' 1brc/07-experiment-ledger.md
+75:**The gap: +0.233 s, +23.3% over the 1.000 s target. NOT REACHED.**
+
+--- Refusing to invent a mechanism: the pot
+$ grep -n -- '41.57-43.64%' 1brc/07-experiment-ledger.md
+82:- **The CPU profile, on the shipped default, ranked by share of the NON-syscall samples** (E-26's rule: the syscall bucket holds 55.03-56.50% of samples against 1.45-1.52 s of measured system time,
+84:**What reaching 1.000 s would take, with both bounds and their assumptions named.** Holding today's overhead STRUCTURE intact — the system and idle shares unchanged — user CPU has to fall to **12.0
+414:- **The profile, refreshed on the shipped default at last** (three profiles, shares of NON-syscall samples per E-26, applied to the measured 14.6567 s of user CPU): `indexDelimAt` **41.57-43.64% (
+515:**E-32 re-measures those shares on the shipped default, and what holds is the RANK, not the numbers.** `-fold ptr` removed 13.5% of user CPU between the two profiles; measured now, `indexDelimAt` 
+
+--- Refusing to invent a mechanism: the two attempts
+$ grep -n -- '+0.81%' 1brc/07-experiment-ledger.md
+84:**What reaching 1.000 s would take, with both bounds and their assumptions named.** Holding today's overhead STRUCTURE intact — the system and idle shares unchanged — user CPU has to fall to **12.0
+316:- **Item 1's fuse, isolated exactly: it does not separate.** `both` and `ptr` are the same function with one `bool`, so their difference is the fuse and nothing else: **+0.81% of wall and −0.11% o
+416:- **Only one function is large enough to be worth 17.58% by itself, and the ceiling is stated with its bad assumption named.** Removing `indexDelimAt` outright, holding system CPU and idle FIXED, 
+525:| 1 | fuse the name hash into the separator scan | **CLOSED — E-27, NOT ADOPTED** | [**CORRECTED, C9.**] This row said `indexDelim`'s 33.5% was item 1's pot. It is not: the fuse keeps the scan and
+
+--- Refusing to invent a mechanism: no third mechanism
+$ grep -n -- 'No third mechanism is invented here' 1brc/07-experiment-ledger.md
+84:**What reaching 1.000 s would take, with both bounds and their assumptions named.** Holding today's overhead STRUCTURE intact — the system and idle shares unchanged — user CPU has to fall to **12.0
+
+--- The decomposition with no residual (E-32)
+$ grep -n -- '80.53%' 1brc/07-experiment-ledger.md
+77:**The bottleneck, profile-backed and decomposed exactly (E-32).** `wall × 15 cores` is an identity, not a model, so the wall above the compute floor splits with no residual: capacity is **18.1995 c
+410:- **The gap decomposes EXACTLY, because it is an identity rather than a model.** `wall × 15 cores` is **18.1995 core-seconds** of capacity and every one of them is user CPU, system CPU or idle: **
+
+--- Docs-only groups are the highest-risk kind
+$ grep -n -- 'no code changed' docs/1brc/review.md
+21:- reviewed go-opt-round-3-item17 62dba55..5b1327c: REPAIRED — the measurement is sound and the write-up of it was not, which is the failure mode this gate exists for: no code changed, so every defe
+22:- reviewed go-opt-round-3-gap c565dda..HEAD: REPAIRED — no code changed, so every defect was a published claim, and the sharpest one was a check that could not fail. **(1) The handoff called the de
+
+--- Batch tokenizer handed forward as the shape to build
+$ grep -n -- 'most load-bearing untested assumption' 1brc/07-experiment-ledger.md
+157:- **Prediction:** the report handed this forward as the shape to build, at **−40.4% / −40.7%** on the official key set, and named it "the single most load-bearing untested assumption in this repor
+464:2. **The batch tokenizer** (`04-asm-kernels.md`'s biggest win, −40.4%/−40.7% on the official key set against staged SWAR): a whole-buffer dual-needle kernel emitting a token stream, drained into t
+
+==============================================================================
+§3  WHAT THIS FILE DELIBERATELY DOES NOT CONTAIN
+==============================================================================
+
+No timings. This report re-measures nothing: it is a distillation of measurements
+already published in 07-experiment-ledger.md, and every figure it quotes is quoted
+with the row that measured it. A retrospective that produced its own numbers would
+be a new experiment wearing a retrospective's clothes, and it would need the quiet
+window, the lock and the bracket that the ledger rows already paid for.
+
+No taxonomy of the 18 review lines by defect kind. The obvious version (grep for
+'correctness defect') classifies wrongly: go-opt-round-2-item13 ('the arm shipped
+with its central guard unmutated') and go-opt-round-2-item14 ('the measurement held
+twice and the code did not') are both code defects and neither line contains the
+phrase. docs/1brc/lessons.md's standing rule is that a statistic over a set nobody
+enumerated survives every arithmetic check, so the report quotes only the two counts
+that are exact: 18 of 18 REPAIRED, and 15 of 18 lines containing the word 'published'.
