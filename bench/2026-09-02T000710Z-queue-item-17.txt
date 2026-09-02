@@ -1,0 +1,63 @@
+# experiment 2026-09-02T000710Z
+hypothesis: queue item 17
+prediction: E-29 substitution reading: at 15 workers the oversubscription overlap is gone, so w15 loses 3-8% against the 20-worker default and ahead-w15 recovers most of it (lands within ~2% of default), while ahead-w20 stays inside the +-1% E-29 measured
+file:     measurements-1b.txt   runs: 5   warmup: 1   cooldown: 20s
+commit:   00a40fb70f755a990d2cc4986d148948b24e40a0
+go:       go version go1.27.0 darwin/arm64
+machine:  Apple M5 Pro, hw.ncpu 15, 24 GiB, 26.5.2 arm64
+hyperfine: hyperfine 1.20.0
+power:    'AC Power' 	100%; charged; 0:00 remaining present: true
+load:      2:07  up 1 day, 16:26, 19 users, load averages: 1.51 1.69 1.79
+
+$ default.a: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+$ w15: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -workers 15 > /dev/null
+$ ahead-w15: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -fill ahead -workers 15 > /dev/null
+$ ahead-w20: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -fill ahead -workers 20 > /dev/null
+$ default.b: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+
+Benchmark 1: default.a
+  Time (mean ± σ):      1.220 s ±  0.007 s    [User: 14.678 s, System: 1.464 s]
+  Range (min … max):    1.214 s …  1.228 s    5 runs
+ 
+Benchmark 2: w15
+  Time (mean ± σ):      1.397 s ±  0.026 s    [User: 14.598 s, System: 1.500 s]
+  Range (min … max):    1.380 s …  1.441 s    5 runs
+ 
+  Warning: Statistical outliers were detected. Consider re-running this benchmark on a quiet system without any interferences from other programs.
+ 
+Benchmark 3: ahead-w15
+  Time (mean ± σ):      1.272 s ±  0.003 s    [User: 14.693 s, System: 1.503 s]
+  Range (min … max):    1.269 s …  1.275 s    5 runs
+ 
+Benchmark 4: ahead-w20
+  Time (mean ± σ):      1.231 s ±  0.010 s    [User: 14.743 s, System: 1.593 s]
+  Range (min … max):    1.219 s …  1.245 s    5 runs
+ 
+Benchmark 5: default.b
+  Time (mean ± σ):      1.229 s ±  0.010 s    [User: 14.747 s, System: 1.504 s]
+  Range (min … max):    1.216 s …  1.240 s    5 runs
+ 
+Summary
+  default.a ran
+    1.01 ± 0.01 times faster than default.b
+    1.01 ± 0.01 times faster than ahead-w20
+    1.04 ± 0.01 times faster than ahead-w15
+    1.15 ± 0.02 times faster than w15
+
+== ledger row skeleton, paste into 07-experiment-ledger.md and write the verdict ==
+
+### E-NN — queue item 17
+
+- **Idea:** 
+- **Prediction:** E-29 substitution reading: at 15 workers the oversubscription overlap is gone, so w15 loses 3-8% against the 20-worker default and ahead-w15 recovers most of it (lands within ~2% of default), while ahead-w20 stays inside the +-1% E-29 measured
+- **Measured, invocation 2026-09-02T000710Z (1b, 5 runs, one hyperfine invocation):**
+
+  | Command | Mean [s] | Min [s] | Max [s] | Relative |
+  |:---|---:|---:|---:|---:|
+  | `default.a` | 1.220 ± 0.007 | 1.214 | 1.228 | 1.00 |
+  | `w15` | 1.397 ± 0.026 | 1.380 | 1.441 | 1.15 ± 0.02 |
+  | `ahead-w15` | 1.272 ± 0.003 | 1.269 | 1.275 | 1.04 ± 0.01 |
+  | `ahead-w20` | 1.231 ± 0.010 | 1.219 | 1.245 | 1.01 ± 0.01 |
+  | `default.b` | 1.229 ± 0.010 | 1.216 | 1.240 | 1.01 ± 0.01 |
+
+- **Verdict:** 

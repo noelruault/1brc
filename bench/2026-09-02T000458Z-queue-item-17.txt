@@ -1,0 +1,19 @@
+# experiment 2026-09-02T000458Z
+hypothesis: queue item 17
+prediction: substitution (E-29 derived): w15 loses >=5% to the 20-worker default and ahead-w15 recovers most of it, landing within 2% of default; independence predicts ahead-w15 stays >=5% behind, and ahead-w20 stays inside E-30 no-effect band (+0.82%/-0.08%)
+file:     measurements-1b.txt   runs: 5   warmup: 1   cooldown: 20s
+commit:   00a40fb70f755a990d2cc4986d148948b24e40a0
+go:       go version go1.27.0 darwin/arm64
+machine:  Apple M5 Pro, hw.ncpu 15, 24 GiB, 26.5.2 arm64
+hyperfine: hyperfine 1.20.0
+power:    'AC Power' 	100%; charged; 0:00 remaining present: true
+load:      2:04  up 1 day, 16:23, 19 users, load averages: 1.98 1.84 1.86
+
+$ default.a: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+$ w15: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -workers 15 > /dev/null
+$ ahead-w15: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -fill ahead -workers 15 > /dev/null
+$ ahead-w20: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -fill ahead -workers 20 > /dev/null
+$ default.b: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+
+Benchmark 1: default.a
+Error: The preparation command terminated with a non-zero exit code. Append ' || true' to the command if you are sure that this can be ignored.

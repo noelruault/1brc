@@ -835,3 +835,114 @@ $ python3 -c '...'   (every figure below is this script's output, not prose arit
 
   load factor at 413 stations in 1<<17 buckets: 0.315%  -> one cache line per probe whatever the bucket size
   official names 8 bytes or shorter: 272 of 413 = 65.9% resolve on the inline word; the other 34.1% take the side-array load
+
+== §S: queue item 17, the 2x2 that tests whether the two overlap mechanisms are substitutes ======
+
+The invocation, backgrounded because five slots at 1b is ~11 min and a foreground
+cap lands its kill on hyperfine's --prepare sleep (which is exactly what happened
+to the attempt logged in bench/2026-09-02T000458Z-queue-item-17.txt, below).
+
+  $ nohup bash 1brc/scripts/experiment.sh -i 'queue item 17' \
+      -p 'E-29 substitution reading: at 15 workers the oversubscription overlap is gone, so w15 loses 3-8% against the 20-worker default and ahead-w15 recovers most of it (lands within ~2% of default), while ahead-w20 stays inside the +-1% E-29 measured' \
+      -a 'default.a=' -a 'w15=-workers 15' -a 'ahead-w15=-fill ahead -workers 15' \
+      -a 'ahead-w20=-fill ahead -workers 20' -a 'default.b=' &
+
+Raw hyperfine output, correctness gate per arm and provenance header:
+bench/2026-09-02T000710Z-queue-item-17.txt
+
+The aborted attempt from the previous cycle, kept as the record of the failure mode
+(E-22's precedent: an invocation that produced no verdict is still part of the log):
+
+  bench/2026-09-02T000458Z-queue-item-17.txt
+  Benchmark 1: default.a
+  Error: The preparation command terminated with a non-zero exit code. Append ' || true' to the command if you are sure that this can be ignored.
+
+  Same five arms, same commit, started 00:04:58Z and dead at 00:05:35Z: 37 s, no
+  timing of any arm. It ran in the foreground, the cycle carrying it was killed, the
+  signal landed on the 20 s --prepare sleep and hyperfine aborted the whole
+  invocation as a failed preparation. It left a lock behind, which this cycle's run
+  cleared as stale ("measure: clearing a stale lock from pid 4029 (no such
+  process)"), and it was gone before this cycle's preflight ran, so it did not
+  overlap the timing below: pgrep -fl 'hyperfine|experiment.sh' was clear at
+  00:06Z and the first timed run started at 00:07:10Z.
+
+  $ python3 -c '...'   (every figure below is this script's output, not prose arithmetic)
+  bracket wall spread %: 0.738      -> under the 3% refusal threshold, invocation is quotable
+  bracket user spread %: 0.470
+  bracket mean wall: 1.2245  user: 14.7125
+
+  w15        wall vs .a +14.51%  vs .b +13.67%  vs mean +14.09% | user vs .a -0.55%  vs .b -1.01%
+  ahead-w15  wall vs .a +4.26%  vs .b +3.50%  vs mean +3.88% | user vs .a +0.10%  vs .b -0.37%
+  ahead-w20  wall vs .a +0.90%  vs .b +0.16%  vs mean +0.53% | user vs .a +0.44%  vs .b -0.03%
+
+  w15 lost 0.1725 s vs bracket mean; ahead-w15 recovers 0.1250 s = 72.5% of it
+  ahead-w15 residual over bracket mean: 0.0475 s = 3.88%
+
+  default.a  parallel efficiency 80.2%  compute floor 0.9785 s
+  w15        parallel efficiency 69.7%  compute floor 0.9732 s
+  ahead-w15  parallel efficiency 77.0%  compute floor 0.9795 s
+  ahead-w20  parallel efficiency 79.8%  compute floor 0.9829 s
+  default.b  parallel efficiency 80.0%  compute floor 0.9831 s
+  wall above floor, bracket: 19.79% / 20.01%
+
+The mechanism check the ticket demanded: -phases on both 15-worker arms and on the
+20-worker default, in the same window, round-robin so no arm owns a slot. Four
+rounds; round 1 is the first-touch outlier the -phases sets have always shown
+(§P), so rounds 2-4 are what the arithmetic uses.
+
+  $ bash /tmp/item17-phases.sh   # takes the measurement lock, require_quiet, then:
+      for round in 1 2 3 4; do for arm in default-w20 off-w15 ahead-w15; do sleep 5
+        /usr/bin/time -l ./1brc/code/go/bin/1brc -in $ASSETS/measurements-1b.txt -phases $flags
+      done; done
+  power:    'AC Power' 100%; charged      load:  2:19  up 1 day, 16:38, load averages: 1.42 1.66 1.75
+
+  == round 1  ahead-w15  [-fill ahead -workers 15]
+  phases: workers=15 chunks=13170 read=9.858735336s fold=15.539986627s read/(read+fold)=38.8%
+  phases: worker wall min=1.230413s p50=1.244947958s max=1.259891208s sum=18.650672416s skew(max/min)=1.024 merge=2.267917ms
+          1.26 real        14.73 user         1.54 sys
+  == round 2  default-w20  []
+  phases: workers=20 chunks=13160 read=9.29922497s fold=15.741412548s read/(read+fold)=37.1%
+  phases: worker wall min=1.245398041s p50=1.253235875s max=1.267659708s sum=25.061859499s skew(max/min)=1.018 merge=4.250041ms
+          1.28 real        14.77 user         1.71 sys
+  == round 2  off-w15  [-fill off -workers 15]
+  phases: workers=15 chunks=13170 read=5.088799006s fold=15.091045432s read/(read+fold)=25.2%
+  phases: worker wall min=1.334841959s p50=1.344007416s max=1.363151666s sum=20.206930457s skew(max/min)=1.021 merge=2.94775ms
+          1.37 real        14.75 user         1.51 sys
+  == round 2  ahead-w15  [-fill ahead -workers 15]
+  phases: workers=15 chunks=13170 read=9.88209825s fold=15.63926652s read/(read+fold)=38.7%
+  phases: worker wall min=1.239220041s p50=1.267266833s max=1.27294325s sum=18.967240624s skew(max/min)=1.027 merge=2.905667ms
+          1.28 real        14.75 user         1.60 sys
+  == round 3  default-w20  []
+  phases: workers=20 chunks=13160 read=8.690721198s fold=15.566295173s read/(read+fold)=35.8%
+  phases: worker wall min=1.205495959s p50=1.214517375s max=1.22265375s sum=24.288782376s skew(max/min)=1.014 merge=4.320666ms
+          1.23 real        14.80 user         1.57 sys
+  == round 3  off-w15  [-fill off -workers 15]
+  phases: workers=15 chunks=13170 read=5.095263436s fold=15.268704578s read/(read+fold)=25.0%
+  phases: worker wall min=1.343628917s p50=1.35401775s max=1.37683325s sum=20.377376209s skew(max/min)=1.025 merge=3.174916ms
+          1.38 real        14.85 user         1.54 sys
+  == round 3  ahead-w15  [-fill ahead -workers 15]
+  phases: workers=15 chunks=13170 read=9.956368568s fold=15.634067428s read/(read+fold)=38.9%
+  phases: worker wall min=1.236242875s p50=1.246616416s max=1.263593084s sum=18.710834294s skew(max/min)=1.022 merge=2.601583ms
+          1.27 real        14.85 user         1.60 sys
+  == round 4  default-w20  []
+  phases: workers=20 chunks=13160 read=8.592930134s fold=15.616600876s read/(read+fold)=35.5%
+  phases: worker wall min=1.20331425s p50=1.212038208s max=1.22036725s sum=24.234009582s skew(max/min)=1.014 merge=4.250333ms
+          1.23 real        14.87 user         1.51 sys
+  == round 4  off-w15  [-fill off -workers 15]
+  phases: workers=15 chunks=13170 read=5.108110912s fold=15.204020393s read/(read+fold)=25.1%
+  phases: worker wall min=1.341420125s p50=1.352340334s max=1.372650292s sum=20.33852925s skew(max/min)=1.023 merge=3.051791ms
+          1.38 real        14.86 user         1.53 sys
+  == round 4  ahead-w15  [-fill ahead -workers 15]
+  phases: workers=15 chunks=13170 read=10.237736802s fold=15.793108449s read/(read+fold)=39.3%
+  phases: worker wall min=1.2619955s p50=1.278294042s max=1.29313425s sum=19.159160793s skew(max/min)=1.025 merge=3.348083ms
+          1.30 real        14.95 user         1.64 sys
+
+  $ python3 -c '...'   (rounds 2-4; again the script's output, not prose arithmetic)
+  == default-w20   means: read 8.861 fold 15.641 workerwall 24.528 | sum/(read+fold) 1.0011 | skew 1.014-1.018
+  == off-w15       means: read 5.097 fold 15.188 workerwall 20.308 | sum/(read+fold) 1.0011 | skew 1.021-1.025
+  == ahead-w15     means: read 10.025 fold 15.689 workerwall 18.946 | sum/(read+fold) 0.7368 | skew 1.022-1.027
+
+  worker-wall sum: off-w15 20.308 -> ahead-w15 18.946 = -6.71%
+  ahead-w15: read+fold 25.714 but worker wall 18.946 -> 6.768 s of read never appears in worker wall (26.3% of it)
+  off-w15:   read+fold 20.285 vs worker wall 20.308 -> gap 0.022 s (0.11%), i.e. serial
+  per-worker read blocked share: off-w15 25.1%  default-w20 36.2%
