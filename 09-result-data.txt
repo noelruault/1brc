@@ -1,0 +1,196 @@
+09-result — data companion
+
+Recorded: 2026-09-02T021446Z, commit ee6f96b, branch 1brc-loop
+  $ pmset -g batt | head -1  ->  Now drawing from 'AC Power'
+  $ uptime                   ->   4:14  up 1 day, 18:33, 19 users, load averages: 1.93 1.76 1.80
+
+This report re-derives nothing. Its timings are quoted from ledger rows and every one of
+them has its raw hyperfine output under 1brc/bench/ and its arithmetic in
+07-experiment-ledger-data.txt. What is NEW here, and therefore recorded in full below, is
+the 1b correctness pass the Definition of Done requires.
+
+==============================================================================
+§1  THE 1b CORRECTNESS PASS (new in final-dod)
+==============================================================================
+
+The reference is 1brc/code/gen/cmd/reference: bufio.Scanner, split on the first ';',
+accumulate in integer tenths. It is deliberately the slow, obvious implementation.
+
+  $ cd 1brc/code/gen && go build -o /tmp/1brc-reference ./cmd/reference
+  $ /usr/bin/time -p /tmp/1brc-reference -in $ASSETS/measurements-1b.txt > 1brc/testdata/expected-1b.out
+    real 38.42
+    user 37.48
+    sys 1.71
+
+  $ /usr/bin/time -p 1brc/code/go/bin/1brc -in $ASSETS/measurements-1b.txt > /tmp/got-1b.out
+    real 1.37
+    user 14.24
+    sys 1.26
+
+  $ cmp /tmp/got-1b.out 1brc/testdata/expected-1b.out && echo "1B BYTE-IDENTICAL: OK"
+    1B BYTE-IDENTICAL: OK
+
+  Size and entry count. Names contain ', ' (Washington, D.C.), so entries are counted
+  by '=' rather than by splitting the line:
+  $ wc -c 1brc/testdata/expected-1b.out ; tr -cd '=' < 1brc/testdata/expected-1b.out | wc -c
+       10664 1brc/testdata/expected-1b.out
+    413
+
+  $ openssl dgst -sha256 1brc/testdata/expected-1b.out
+    SHA2-256(1brc/testdata/expected-1b.out)= 3b2f074fbf2a48a6f0dafd102811ae77bb8759d70574ea1c652910b9c6daf1e5
+  $ openssl dgst -sha256 $ASSETS/measurements-1b.txt   # the input it was taken over
+    recorded in 02-baseline-data.txt with the generator command that reproduces the file;
+    not re-hashed here, because re-reading 13.8 GB proves nothing the byte-compare did not.
+
+  The other cases. The committed DEFAULT gate runs two, both 10m; the 242m case is gated
+  only through CASES_EXTRA, which experiment.sh fills when it times that file (that is how
+  E-33 checked it), so it is not in the output below:
+  $ bash 1brc/scripts/check-correctness.sh
+    check-correctness: OK   measurements-10m.txt (413 stations, 0s)
+    check-correctness: OK   measurements-10k-stations-10m.txt (10000 stations, 0s)
+
+==============================================================================
+§2  THE GREEN GATE, spec.md:26 and :29, run at this commit
+==============================================================================
+
+  $ cd 1brc/code/go && test -z "$(gofmt -l .)" && go vet ./... && go build -o bin/1brc . && go test ./... && go test -race -count=1 ./...
+    ok  	github.com/noelruault/research/1brc/code/go	(cached)
+    ok  	github.com/noelruault/research/1brc/code/go	7.166s
+    exit=0
+
+  $ cd 1brc/code/gen && test -z "$(gofmt -l .)" && go vet ./... && go build ./... && go test ./...
+    ok  	github.com/noelruault/research/1brc/code/gen	(cached)
+    ok  	github.com/noelruault/research/1brc/code/gen/cmd/floor	(cached)
+    ?   	github.com/noelruault/research/1brc/code/gen/cmd/measurements	[no test files]
+    ?   	github.com/noelruault/research/1brc/code/gen/cmd/reference	[no test files]
+    exit=0
+
+  1brc/code/asm, per spec.md:30:
+  $ cd 1brc/code/asm && make test
+    test -z "$(gofmt -l .)"
+    go vet ./...
+    go test ./...
+    ok  	github.com/noelruault/research/1brc/code/asm	(cached)
+    exit=0
+
+==============================================================================
+§3  THE DEFINITION OF DONE, ITEM BY ITEM, WITH THE COMMAND THAT VERIFIED IT
+==============================================================================
+
+spec.md:56-68. One block per line of the DoD, in the order the spec writes them.
+
+-- 01-definition.md exists, written from cited sources, with the official rules --
+   $ head -3 1brc/01-definition.md
+     # 01 — What the One Billion Row Challenge actually asks
+     
+     Written from the upstream repository, not from memory. Every rule below cites the file and line it came from; the fetch commands, upstream commit and content hashes are in `01-definition-data.txt`. Source of record: `gunnarmorling/1brc` at commit `db06419`, fetched 2026-09-01.
+   $ grep -c 'db06419' 1brc/01-definition.md 1brc/01-definition-data.txt   # the upstream commit it cites
+     1brc/01-definition.md:2
+     1brc/01-definition-data.txt:1
+   NOTE: 1brc/definition.md was a byte-identical, unnumbered, uncompanioned duplicate of
+   01-definition.md, committed in 4145227 and referenced by nothing. final-dod deletes it,
+   because 'reports numbered oldest-first, each with a data companion' is the DoD line this
+   file was the only violation of. git retains it; cmp said IDENTICAL before the delete.
+
+-- correctness green on 10m AND on the 1b file --  see §1. Both byte-identical.
+
+-- a best Go binary with a measured 1B-row wall clock, mean +/- stddev, storage state
+   and reader configuration recorded --  09-result.md's first table; raw output in
+   1brc/bench/, arithmetic in 07-experiment-ledger-data.txt §V.
+
+-- target < 1.0 s; if not reached, the measured best, the gap, a profile-backed
+   bottleneck analysis, and PARKED.md with revive triggers --
+   $ grep -c '^## P-' 1brc/PARKED.md
+     9
+   $ grep -c 'Revive when' 1brc/PARKED.md    # every entry carries one
+     9
+
+-- the performance-assembly skill exists, frontmatter matching the siblings, employer-agnostic --
+   $ ls -la /Users/noelruault/.claude-work-home/.claude/skills/performance-assembly/SKILL.md
+     -rw-r--r--  1 noelruault  staff  16310 Sep  1 16:55 /Users/noelruault/.claude-work-home/.claude/skills/performance-assembly/SKILL.md
+   $ sed -n '1,5p' $SKILL
+     ---
+     name: performance-assembly
+     description: >-
+       Write and measure hand-written assembly and SWAR kernels on macOS/arm64 (Apple silicon), from Go, 
+     ---
+   $ grep -Ein 'research-1brc|1brc-loop|1brc|gunnarmorling|go/src/github' $SKILL
+     (provenance markers: repo name, branch, study name, the upstream project, local paths)
+     143:- **mmap: 6.7 s** ... "no solution in the public 1BRC leaderboard mmaps" ...
+     ONE hit, and it is the PUBLIC challenge's name inside a citation of its public
+     leaderboard, in the same category as naming SPEC or TPC-H. It is not an employer,
+     a repository, a branch, a ticket or a local path, which is what the rule is about.
+     The employer-name half of the check was run separately and returned 0; the names
+     themselves are deliberately not written into a committed file, because a repo full
+     of employer tokens is exactly what the guard that rejected the first draft of this
+     line exists to prevent.
+     0
+
+-- every report has its data companion --
+   $ for f in 1brc/0*.md; do b=${f%.md}; [ -f "$b-data.txt" ] && echo "OK   $f" || echo "MISS $f"; done
+     OK   01-definition.md
+     OK   02-baseline.md
+     OK   03-technique-recon.md
+     OK   04-asm-kernels.md
+     OK   05-go-techniques.md
+     OK   06-cross-disciplinary-transfer.md
+     OK   07-experiment-ledger.md
+     OK   08-method-what-worked.md
+     OK   09-result.md
+
+-- 1brc/README.md summarizes the study --  written by final-dod, see the file.
+-- 1brc/CORRECTIONS.md exists --
+   $ grep -c '^## C' 1brc/CORRECTIONS.md
+     13
+
+-- the headline re-measured in a quiet window, AC power, power+load recorded --
+   Done three times; see 07-experiment-ledger-data.txt §V and rows E-35/E-36. It did NOT
+   reproduce, CORRECTIONS.md C13 records that, and 09-result.md publishes both figures.
+   $ pmset -g batt | head -1
+     Now drawing from 'AC Power'
+
+-- index rows staged in THIS branch: root README.md Records, root PARKED.md register
+   index, a ## 1brc section in repo CLAUDE.md --
+   $ grep -c '1brc' README.md PARKED.md CLAUDE.md
+     CLAUDE.md:0
+     PARKED.md:1
+     README.md:0
+
+-- the method retrospective exists --
+   $ ls 1brc/08-method-what-worked.md 1brc/08-method-what-worked-data.txt
+     1brc/08-method-what-worked-data.txt
+     1brc/08-method-what-worked.md
+
+-- index rows, RE-RUN after final-dod wrote them (the run above was taken before) --
+   $ grep -c '1brc' README.md PARKED.md CLAUDE.md
+     PARKED.md:1
+     CLAUDE.md:3
+     README.md:2
+   $ grep -n '^- \*\*\[1brc/\]' README.md | cut -c1-60
+     46:- **[1brc/](1brc/)** — can a Go program aggregate the
+   $ grep -n '^## 1brc' CLAUDE.md
+     23:## 1brc
+   $ grep -n '| `1brc` |' PARKED.md
+     41:| `1brc` | [`1brc/PARKED.md`](1brc/PARKED.md) |
+
+-- 1brc/README.md exists --
+   $ wc -c 1brc/README.md
+         5766 1brc/README.md
+
+==============================================================================
+§4  WHAT final-dod DID NOT VERIFY, AND WHY
+==============================================================================
+
+- The upstream leaderboard timings quoted in 01-definition.md and 03-technique-recon.md
+  are facts about a 32-core EPYC limited to 8 cores. They were never re-run here and
+  cannot be: spec.md:35 forbids comparing them against this machine's clock, and this
+  report does not.
+- No JDK 21+ on this machine (Java 8 JRE, no javac), so upstream's Java reference was
+  never executed; the output semantics in 01-definition.md are derived from its source
+  and pinned by the byte-compare against code/gen's own reference, not by running it.
+- A genuinely COLD-cache number does not exist in this study. 'purge' needs sudo and
+  this loop is unattended, so every published storage state is 'uncached' (F_NOCACHE)
+  or 'page-cached', and the word cold is never used for either.
+- The residual between the published headline and the final-dod re-measure has no named
+  mechanism. E-36 prices one contributor (the 1b correctness read this ticket inserted)
+  and refuses to invent one for the rest; see 07-experiment-ledger.md E-35/E-36.

@@ -1294,3 +1294,105 @@ P-05 against §T's worker-wall skew).
   asks for exists and was already measured: 04-asm-kernels.md:31 has per-row NEON losing
   by 23.1% there against 16.3% on the 8.0-byte official set. Long names are this entry's
   WORST case. The trigger cannot revive it and is struck.
+
+== §V: E-35 and E-36 — the final-dod headline re-measure, and the control ======
+
+The binary is byte-identical to the one E-34 timed. The check, run before anything else:
+
+  $ E34=$(grep -m1 '^commit:' 1brc/bench/2026-09-02T011232Z*.txt | awk '{print $2}')
+  $ git log --oneline $E34..HEAD -- 1brc/code/go | wc -l
+    f3f32236964ddff04f3aa384d4cf26d1549b7a78
+    0
+
+  For contrast, the same check against E-27's commit, which is NOT the same binary:
+  $ E27=$(grep -m1 '^commit:' 1brc/bench/2026-09-01T220012Z*.txt | awk '{print $2}'); git log --oneline $E27..HEAD -- 1brc/code/go | wc -l
+    e30bc9ab00cad5bda1b576a7ddb503791f77004d
+    10
+
+--- R1: bench.sh, unbracketed, one configuration, NO cooldown ---
+  $ FILES=1b RUNS=5 WARMUP=1 bash 1brc/scripts/bench.sh final-dod-headline
+  # bench 2026-09-02T015752Z
+  label:    final-dod-headline
+  files:    1b   runs: 5   warmup: 1
+  commit:   ee6f96b285a8f475ee86875ab3e3381237323987
+  go:       go version go1.27.0 darwin/arm64
+  machine:  Apple M5 Pro, hw.ncpu 15, 24 GiB, 26.5.2 arm64
+  hyperfine: hyperfine 1.20.0
+  power:    'AC Power' 	100%; charged; 0:00 remaining present: true
+  load:      3:57  up 1 day, 18:16, 19 users, load averages: 1.88 1.82 1.76
+  
+  $ hyperfine --warmup 1 --runs 5 '/Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt > /dev/null'
+  Benchmark 1: 1brc 1b
+    Time (mean ± σ):      1.345 s ±  0.011 s    [User: 14.450 s, System: 1.243 s]
+    Range (min … max):    1.331 s …  1.357 s    5 runs
+   
+  
+
+--- R2: experiment.sh, two identical no-flag arms, 20 s cooldown, expected-1b.out PRESENT ---
+  $ bash 1brc/scripts/experiment.sh -i 'final-dod headline re-measure' -p '<see the file>' -a 'default.a=' -a 'default.b='
+  Benchmark 1: default.a
+    Time (mean ± σ):      1.292 s ±  0.007 s    [User: 14.311 s, System: 1.267 s]
+    Range (min … max):    1.284 s …  1.300 s    5 runs
+   
+  Benchmark 2: default.b
+    Time (mean ± σ):      1.281 s ±  0.006 s    [User: 14.310 s, System: 1.263 s]
+    Range (min … max):    1.271 s …  1.286 s    5 runs
+  load at the header: load:      3:58  up 1 day, 18:17, 19 users, load averages: 3.06 2.14 1.88
+  the correctness gate this invocation ran, per arm (note the third case, which no earlier 1b invocation paid):
+    check-correctness: OK   measurements-10m.txt (413 stations, 0s)
+    check-correctness: OK   measurements-10k-stations-10m.txt (10000 stations, 0s)
+    check-correctness: OK   measurements-1b.txt (413 stations, 1s)
+    check-correctness: OK   measurements-10m.txt (413 stations, 0s)
+    check-correctness: OK   measurements-10k-stations-10m.txt (10000 stations, 0s)
+    check-correctness: OK   measurements-1b.txt (413 stations, 1s)
+
+--- R3: the control, same command, expected-1b.out moved aside ---
+  $ mv 1brc/testdata/expected-1b.out /tmp/expected-1b.out.hold
+  $ bash 1brc/scripts/experiment.sh -i 'final-dod headline re-measure, control: no 1b correctness pass before the timing' -p '<see the file>' -a 'default.a=' -a 'default.b='
+  $ mv /tmp/expected-1b.out.hold 1brc/testdata/expected-1b.out
+  Benchmark 1: default.a
+    Time (mean ± σ):      1.257 s ±  0.008 s    [User: 14.327 s, System: 1.299 s]
+    Range (min … max):    1.247 s …  1.266 s    5 runs
+   
+  Benchmark 2: default.b
+    Time (mean ± σ):      1.257 s ±  0.010 s    [User: 14.340 s, System: 1.287 s]
+    Range (min … max):    1.244 s …  1.270 s    5 runs
+  load at the header: load:      4:04  up 1 day, 18:23, 19 users, load averages: 1.65 2.02 1.91
+  the correctness gate this invocation ran, per arm:
+    check-correctness: OK   measurements-10m.txt (413 stations, 1s)
+    check-correctness: OK   measurements-10k-stations-10m.txt (10000 stations, 0s)
+    check-correctness: OK   measurements-10m.txt (413 stations, 0s)
+    check-correctness: OK   measurements-10k-stations-10m.txt (10000 stations, 0s)
+
+--- the arithmetic over those readings, evaluated rather than written in prose ---
+  $ python3 -c '<the block below>'
+  E-34 bracket mean        1.2240 s   spread 0.327%
+  R2 (with 1b gate) mean   1.2865 s   spread 0.859%
+  R3 (control) mean        1.2570 s   spread 0.000%
+
+  Every comparison below is CROSS-INVOCATION. This ledger records those and never
+  subtracts them, so none of these is a delta; they are the distance between two
+  separately valid readings of one configuration.
+    R3 vs E-34               +2.70%
+    R2 vs R3                 +2.35%
+    R1 (1.345 s) vs R3       +7.00%
+    R3 vs E-27 headline      +1.95%
+
+  Disjointness, which does not depend on any subtraction:
+    published band  1.213-1.241 s (nine readings)
+    R1 range        1.331-1.357 s      R2 ranges 1.284-1.300 / 1.271-1.286
+    R3 ranges       1.247-1.266 / 1.244-1.270
+    fastest new run 1.244 s  >  slowest published run 1.241 s  ->  disjoint
+
+  user CPU, four bracketed arms today   14.3220 s
+  user CPU, E-34 two bracketed arms     14.6535 s     -2.26%
+  sys  CPU, four bracketed arms today   1.2790 s
+  sys  CPU, E-34 two bracketed arms     1.5265 s     -16.21%
+  A slower program spends MORE CPU. Both channels fell, so this is not a regression.
+
+  R3 decomposed by the wall x 15 identity (idle is the remainder, not a measurement):
+    capacity 18.8550 core-s = user 14.3335 (76.02%) + sys 1.2930 (6.86%) + idle 3.2285 (17.12%)
+    E-32 measured 80.53 / 7.99 / 11.48 on the same identity. The whole difference is idle.
+    compute floor  user/15 = 0.9556 s, still BELOW the 1.000 s target (E-27 had 0.9812 s)
+
+  gap to target:  E-27 +23.3%   R3 +25.7%   -- NOT REACHED on either

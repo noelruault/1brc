@@ -1,0 +1,40 @@
+# experiment 2026-09-02T020455Z
+hypothesis: final-dod headline re-measure, control: no 1b correctness pass before the timing
+prediction: the +5.1% against E-34 is the 13.8 GB F_NOCACHE correctness read that expected-1b.out inserted before every arm; with that file absent the bracket reproduces E-34 inside its 1.213-1.237 s band rather than repeating 1.281-1.292 s
+file:     measurements-1b.txt   runs: 5   warmup: 1   cooldown: 20s
+commit:   ee6f96b285a8f475ee86875ab3e3381237323987
+go:       go version go1.27.0 darwin/arm64
+machine:  Apple M5 Pro, hw.ncpu 15, 24 GiB, 26.5.2 arm64
+hyperfine: hyperfine 1.20.0
+power:    'AC Power' 	100%; charged; 0:00 remaining present: true
+load:      4:04  up 1 day, 18:23, 19 users, load averages: 1.65 2.02 1.91
+
+$ default.a: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+$ default.b: /Users/noelruault/go/src/github.com/noelruault/research-1brc/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+
+Benchmark 1: default.a
+  Time (mean ± σ):      1.257 s ±  0.008 s    [User: 14.327 s, System: 1.299 s]
+  Range (min … max):    1.247 s …  1.266 s    5 runs
+ 
+Benchmark 2: default.b
+  Time (mean ± σ):      1.257 s ±  0.010 s    [User: 14.340 s, System: 1.287 s]
+  Range (min … max):    1.244 s …  1.270 s    5 runs
+ 
+Summary
+  default.b ran
+    1.00 ± 0.01 times faster than default.a
+
+== ledger row skeleton, paste into 07-experiment-ledger.md and write the verdict ==
+
+### E-NN — final-dod headline re-measure, control: no 1b correctness pass before the timing
+
+- **Idea:** 
+- **Prediction:** the +5.1% against E-34 is the 13.8 GB F_NOCACHE correctness read that expected-1b.out inserted before every arm; with that file absent the bracket reproduces E-34 inside its 1.213-1.237 s band rather than repeating 1.281-1.292 s
+- **Measured, invocation 2026-09-02T020455Z (1b, 5 runs, one hyperfine invocation):**
+
+  | Command | Mean [s] | Min [s] | Max [s] | Relative |
+  |:---|---:|---:|---:|---:|
+  | `default.a` | 1.257 ± 0.008 | 1.247 | 1.266 | 1.00 ± 0.01 |
+  | `default.b` | 1.257 ± 0.010 | 1.244 | 1.270 | 1.00 |
+
+- **Verdict:** 
