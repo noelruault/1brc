@@ -44,6 +44,7 @@ type table struct {
 	hashes []uint64
 	e      []entry
 	q      []qentry
+	m      map[string]*entry
 	keys   [][]byte
 	mask   uint64
 	size   int
@@ -55,6 +56,7 @@ const (
 	tableCombined tableKind = iota
 	tableSplit
 	tableQuot
+	tableMap
 )
 
 // tableMode rejects an unknown layout instead of silently running the incumbent, which would report a measurement of the arm it was asked to replace.
@@ -66,8 +68,10 @@ func tableMode(s string) (tableKind, error) {
 		return tableSplit, nil
 	case "quot":
 		return tableQuot, nil
+	case "map":
+		return tableMap, nil
 	}
-	return 0, fmt.Errorf("unknown -table %q, want combined, split or quot", s)
+	return 0, fmt.Errorf("unknown -table %q, want combined, split, quot or map", s)
 }
 
 func newTable(bits int, kind tableKind) *table {
@@ -76,6 +80,9 @@ func newTable(bits int, kind tableKind) *table {
 	case tableQuot:
 		t.q = make([]qentry, 1<<bits)
 		t.keys = make([][]byte, 0, 1024)
+	case tableMap:
+		// No size hint on purpose: queue item 9's mechanism is that a map holding only the live stations stays compact where a 1<<bits array does not, and pre-sizing to 1<<bits would build the array this arm exists to avoid.
+		t.m = map[string]*entry{}
 	default:
 		t.e = make([]entry, 1<<bits)
 		if kind == tableSplit {
@@ -96,6 +103,9 @@ func (t *table) buckets() int {
 // h indexes, and in split mode is also stored with its low bit forced so that zero can mean "empty"; two hashes that differ only in that bit are separated by the full key compare anyway.
 // w is h before the mix, which only the quotiented layout reads; the other two take it and drop it, so they keep paying for the arm rather than the arm paying for them.
 func (t *table) update(h, w uint64, name []byte, v int32) bool {
+	if t.m != nil {
+		return t.updateMap(name, v)
+	}
 	if t.q != nil {
 		return t.updateQuot(h, w, name, v)
 	}
@@ -169,6 +179,28 @@ func (t *table) updateQuot(h, w uint64, name []byte, v int32) bool {
 		}
 		i = (i + 1) & t.mask
 	}
+}
+
+// updateMap is queue item 9: Go's runtime map instead of the open-addressed array, kept behind a flag by 05-go-techniques.md:108 because it measured 3.7% FASTER than the best array on the 10,000-station key set and 15.8% slower on the official 413.
+//
+// It ignores h and w, which the caller computed anyway: removing that would need a per-row branch in the fold loop, which would charge every other layout for this arm's existence, so the dead hash is priced into this arm's number rather than out of the incumbent's.
+// The lookup is the map-access-with-string([]byte) form the compiler turns into a no-copy probe; the INSERT converts for real, which is what keeps the key from aliasing the read buffer the worker is about to refill.
+// It can never report full, so unlike a linear probe it has no failure mode to guard: a map with no empty slot grows.
+func (t *table) updateMap(name []byte, v int32) bool {
+	if e := t.m[string(name)]; e != nil {
+		if v < e.min {
+			e.min = v
+		}
+		if v > e.max {
+			e.max = v
+		}
+		e.sum += int64(v)
+		e.count++
+		return true
+	}
+	t.m[string(name)] = &entry{min: v, max: v, sum: int64(v), count: 1}
+	t.size++
+	return true
 }
 
 func (t *table) insert(i int, name []byte, v int32) {
@@ -348,7 +380,24 @@ func (t *table) foldTail(data []byte, pos int, base int64) error {
 }
 
 // drain folds this shard's entries into the shared result map. It runs once per shard, so it is allowed to be obvious.
+//
+// The three loops are not factored into one helper because a shared one would take the key as a string, and the two array layouts hold theirs as []byte: the conversion at the call site allocates per station per shard, which would put an allocation into the incumbent's merge that queue item 10 is meant to measure without.
 func (t *table) drain(into map[string]*gen.Accumulator) {
+	for name, e := range t.m {
+		a := into[name]
+		if a == nil {
+			into[name] = &gen.Accumulator{Min: gen.Tenths(e.min), Max: gen.Tenths(e.max), Sum: gen.Tenths(e.sum), Count: int64(e.count)}
+			continue
+		}
+		if gen.Tenths(e.min) < a.Min {
+			a.Min = gen.Tenths(e.min)
+		}
+		if gen.Tenths(e.max) > a.Max {
+			a.Max = gen.Tenths(e.max)
+		}
+		a.Sum += gen.Tenths(e.sum)
+		a.Count += int64(e.count)
+	}
 	for i := range t.q {
 		e := &t.q[i]
 		if e.nlen == 0 {

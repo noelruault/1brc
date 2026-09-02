@@ -14,6 +14,10 @@ CASES=(
   "measurements-10m.txt|expected-10m.out"
   "measurements-10k-stations-10m.txt|expected-10k-stations-10m.out"
 )
+# CASES_EXTRA appends "<data>|<expected>" pairs. experiment.sh sets it from -f so an arm timed on a file outside the two gate cases is byte-compared on THAT file: E-09 ranks arms per file, and the two 10m cases cannot establish correctness at a scale where the ranking happens.
+# It stays out of the default list because the files it names are tens of gigabytes, and every 413-regime arm would pay that read immediately before being timed.
+read -r -a EXTRA_CASES <<< "${CASES_EXTRA:-}"
+CASES+=(${EXTRA_CASES[@]+"${EXTRA_CASES[@]}"})
 
 cd "$REPO/1brc/code/go"
 go build -o bin/1brc .

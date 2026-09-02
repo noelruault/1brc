@@ -96,10 +96,16 @@ run() {
   cd "$REPO/1brc/code/go"
   go build -o bin/1brc .
 
+  # A committed reference output for the timed file means the arm can be checked on the file it is about to be ranked on, not only on the two 10m gate cases. 1b has none (the reference is 39.8 ns/row single-threaded), so the default regime is unaffected.
+  local extra=""
+  if [[ -f $REPO/1brc/testdata/expected-$FILE.out ]]; then
+    extra="measurements-$FILE.txt|expected-$FILE.out"
+  fi
+
   local i
   for ((i = 0; i < ${#ARM_NAMES[@]}; i++)); do
     echo "experiment: correctness gate for arm '${ARM_NAMES[i]}' (${ARM_FLAGS[i]:-no flags})"
-    ARM="${ARM_FLAGS[i]}" ASSETS="$ASSETS" bash "$REPO/1brc/scripts/check-correctness.sh" \
+    ARM="${ARM_FLAGS[i]}" ASSETS="$ASSETS" CASES_EXTRA="$extra" bash "$REPO/1brc/scripts/check-correctness.sh" \
       || die "arm '${ARM_NAMES[i]}' fails the byte-compare. spec.md: that is a bug, not a result."
   done
 

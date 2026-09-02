@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"testing"
 	"unsafe"
@@ -26,7 +27,7 @@ func defaults() config {
 func strategies() []config {
 	var out []config
 	for _, split := range []string{"static", "cursor"} {
-		for _, layout := range []string{"combined", "split", "quot"} {
+		for _, layout := range []string{"combined", "split", "quot", "map"} {
 			for _, io := range []string{"pread", "mmap"} {
 				// The parse sweep names -fold slice because the pointer arms have no arm for any parse but word, which is the guard in aggregateFile.
 				for _, parse := range []string{"branchless", "scalar", "word"} {
@@ -492,6 +493,10 @@ func TestTableTooSmallErrorsInsteadOfHanging(t *testing.T) {
 		fmt.Fprintf(&body, "station-%03d;1.%d\n", i, i%10)
 	}
 	for _, layout := range tableKinds() {
+		if layout == tableMap {
+			// The map layout has no probe and no fixed bucket count, so there is nothing here to hang: it grows. TestMapLayoutGrowsPastTheBucketCount covers the same input for it.
+			continue
+		}
 		// Six bits is 64 buckets for 200 keys: it must fill and then fail.
 		err := newTable(6, layout).fold(body.Bytes(), kernelRow, parseBranchless, foldSlice, 0)
 		if err == nil {
@@ -501,6 +506,63 @@ func TestTableTooSmallErrorsInsteadOfHanging(t *testing.T) {
 			t.Fatalf("layout=%d: wrong error: %v", layout, err)
 		}
 	}
+}
+
+// TestMapLayoutGrowsPastTheBucketCount is TestTableTooSmallErrorsInsteadOfHanging's other half: the same 200 keys at 64 buckets, where the arrays must fail and the map must not.
+// -bits is inert for this layout, and an arm that silently honoured it would report a measurement of a table three orders of magnitude smaller than the one the flag names.
+func TestMapLayoutGrowsPastTheBucketCount(t *testing.T) {
+	var body bytes.Buffer
+	const stations = 200
+	for i := range stations {
+		fmt.Fprintf(&body, "station-%03d;%d.%d\n", i, i%90, i%10)
+	}
+	want, err := gen.Aggregate(bytes.NewReader(body.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tab := newTable(6, tableMap)
+	if err := tab.fold(body.Bytes(), kernelRow, parseBranchless, foldSlice, 0); err != nil {
+		t.Fatalf("map layout at 64 buckets: %v", err)
+	}
+	got := map[string]*gen.Accumulator{}
+	tab.drain(got)
+	if len(got) != len(want) {
+		t.Fatalf("map layout: %d stations, want %d", len(got), len(want))
+	}
+	for name, w := range want {
+		if g := got[name]; g == nil || *g != *w {
+			t.Fatalf("map layout: %q got %+v want %+v", name, g, *w)
+		}
+	}
+}
+
+// TestMapKeysDoNotAliasTheFoldBuffer pins the one hazard this layout has that the arrays do not: its key is a string, and the cheapest way to make one is to point it at the row still sitting in the worker's read buffer.
+// That buffer is refilled by the next chunk, so an aliased key would leave the result map holding names built out of whatever bytes landed next; the corpus cannot show it, because the fixtures never reuse a buffer.
+func TestMapKeysDoNotAliasTheFoldBuffer(t *testing.T) {
+	data := []byte("Zurich;1.0\nOslo;2.0\nZurich;3.0\n")
+	tab := newTable(9, tableMap)
+	if err := tab.fold(data, kernelRow, parseBranchless, foldSlice, 0); err != nil {
+		t.Fatal(err)
+	}
+	for i := range data {
+		data[i] = 'X'
+	}
+	got := map[string]*gen.Accumulator{}
+	tab.drain(got)
+	for _, want := range []string{"Zurich", "Oslo"} {
+		if got[want] == nil {
+			t.Fatalf("%q is missing after the fold buffer was overwritten; keys alias it. got %v", want, keysOf(got))
+		}
+	}
+}
+
+func keysOf(m map[string]*gen.Accumulator) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }
 
 func TestRunReportsBadInput(t *testing.T) {
@@ -715,7 +777,7 @@ func TestFoldArmsAgree(t *testing.T) {
 }
 
 // tableKinds is every layout the binary can be asked for: correctness must hold for all of them or a benchmark of one is measuring a bug.
-func tableKinds() []tableKind { return []tableKind{tableCombined, tableSplit, tableQuot} }
+func tableKinds() []tableKind { return []tableKind{tableCombined, tableSplit, tableQuot, tableMap} }
 
 // TestQuotEntryIsThirtyTwoBytes pins H-13's whole premise. The hypothesis is that the probed array shrinks from 48 bytes per bucket to 32; a field added without shrinking another turns the arm into a measurement of nothing.
 func TestQuotEntryIsThirtyTwoBytes(t *testing.T) {

@@ -24,7 +24,7 @@ func main() {
 	flag.IntVar(&cfg.Bits, "bits", 17, "log2 of the per-worker table's bucket count")
 	flag.BoolVar(&cfg.NoCache, "nocache", true, "set F_NOCACHE so reads bypass the page cache (pread only)")
 	flag.StringVar(&cfg.Split, "split", "static", "work distribution: static | cursor (H1)")
-	flag.StringVar(&cfg.Table, "table", "combined", "table layout: combined | split (H5) | quot (H-13)")
+	flag.StringVar(&cfg.Table, "table", "combined", "table layout: combined | split (H5) | quot (H-13) | map (queue item 9; -bits is inert for it)")
 	flag.StringVar(&cfg.IO, "io", "pread", "reader: pread | mmap (H7)")
 	flag.StringVar(&cfg.Parse, "parse", defaultParse, "temperature parse and format check: branchless | scalar (H3) | word (E-25)")
 	flag.StringVar(&cfg.Kernel, "kernel", "row", "tokenizer: row | batch-swar | batch-neon (go-v2-kernels)")
