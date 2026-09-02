@@ -946,3 +946,25 @@ rounds; round 1 is the first-touch outlier the -phases sets have always shown
   ahead-w15: read+fold 25.714 but worker wall 18.946 -> 6.768 s of read never appears in worker wall (26.3% of it)
   off-w15:   read+fold 20.285 vs worker wall 20.308 -> gap 0.022 s (0.11%), i.e. serial
   per-worker read blocked share: off-w15 25.1%  default-w20 36.2%
+
+  $ python3 -c '...'   (the review gate's repairs, each figure evaluated rather than written)
+  disjointness of every arm against both bracket slots (ranges from the hyperfine output):
+    w15        vs default.a  overlap=False   vs default.b  overlap=False    -> disjoint from both
+    ahead-w15  vs default.a  overlap=False   vs default.b  overlap=False    -> disjoint from both
+    ahead-w20  vs default.a  overlap=True    vs default.b  overlap=True     -> overlaps both
+    covers=False in all six comparisons: ahead-w20's 1.219-1.245 OVERLAPS default.b's 1.216-1.240, it does not cover it
+
+  P-05's trigger distance, which the first draft of this section got wrong as "eight points":
+    skew 1.027 against the 1.15 trigger = 12.3 points   (1.021 against 1.15 = 12.9 points)
+
+  how much of the read the prefetch actually hides, ahead-w15, rounds 2-4 means:
+    worker wall 18.946 - fold 15.689 = 3.257 s of read still on the critical path
+    hidden = 10.025 - 3.257 = 6.768 s = 67.5% of the arm's 10.025 s of read
+    the subtraction is licensed by the unstaged identity: off-w15 and default-w20 both measure
+    sum(worker wall)/(read+fold) = 1.0011, so worker wall carries no third component to confound it
+
+  parallel efficiency as a ladder (user CPU / (wall x 15 cores)), which is the second channel:
+    incumbents 80.2% / 80.0%   w15 69.7%   ahead-w15 77.0%   ahead-w20 79.8%
+    drop from removing oversubscription: 10.4 points
+    recovered by the prefetch: 7.3 points = 70.2% of the drop  (the wall channel says 72.5%)
+    bracket spread on this channel: 0.2 points; ahead-w20 sits 0.3 points under the 80.1% mean
