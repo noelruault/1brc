@@ -6,10 +6,10 @@ set -euo pipefail
 # --self-test asserts the INTERACTIVE defaults, so it runs without these overrides or it fails on them.
 if [[ ${1:-} == --self-test ]]; then exec bash "$(dirname "${BASH_SOURCE[0]}")/experiment.sh" "$@"; fi
 
-export IDLE_MIN="${IDLE_MIN:-600}"
-export QUIET_LOAD="${QUIET_LOAD:-4.2}"
-export QUIET_WAIT="${QUIET_WAIT:-28800}"
-# Never force: a runner that stamps NOT QUIET and carries on produces rows nobody may quote.
-export QUIET_FORCE=0
+# Operator-set 2026-09-04: measure NOW, never block. The idle gate is off and a busy machine is stamped rather than refused, so the bracket reports the confound instead of the run withholding a number.
+export IDLE_MIN="${IDLE_MIN:-0}"
+export QUIET_LOAD="${QUIET_LOAD:-6.0}"
+export QUIET_WAIT="${QUIET_WAIT:-120}"
+export QUIET_FORCE="${QUIET_FORCE:-1}"
 
 exec bash "$(dirname "${BASH_SOURCE[0]}")/experiment.sh" "$@"
