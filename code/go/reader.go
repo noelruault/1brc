@@ -280,6 +280,7 @@ const (
 	foldHash
 	foldPtr
 	foldBoth
+	foldLanes
 )
 
 func foldMode(name string) (foldKind, error) {
@@ -292,8 +293,10 @@ func foldMode(name string) (foldKind, error) {
 		return foldPtr, nil
 	case "both":
 		return foldBoth, nil
+	case "lanes":
+		return foldLanes, nil
 	}
-	return 0, fmt.Errorf("unknown -fold %q, want slice, hash, ptr or both", name)
+	return 0, fmt.Errorf("unknown -fold %q, want slice, hash, ptr, both or lanes", name)
 }
 
 // fillKind selects how a worker stages its reads against its folds: H-14's double buffer, plus the arm that separates the fill-ahead from the read-shape rewrite it needed to exist.

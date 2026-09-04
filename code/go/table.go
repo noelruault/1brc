@@ -244,6 +244,8 @@ func (t *table) fold(data []byte, k kernel, pk parseKind, fk foldKind, base int6
 			pos, err = t.foldRowsPtr(data, base, false)
 		case foldBoth:
 			pos, err = t.foldRowsPtr(data, base, true)
+		case foldLanes:
+			pos, err = t.foldRowsLanes(data, base)
 		default:
 			pos, err = t.foldRows(data, pk, base)
 		}
@@ -356,6 +358,81 @@ func (t *table) foldRowsPtr(data []byte, base int64, fuse bool) (int, error) {
 		pos += sep + 1 + next
 	}
 	return pos, nil
+}
+
+// foldRowsLanes runs TWO row cursors over one buffer so their dependency chains overlap: a row's start is not known until its own parse retires, so one cursor gives the core no independent work to fill the stall with.
+//
+// The split is at a ROW BOUNDARY, which is what makes the aggregate identical: each lane owns whole rows and min/max/sum/count commute.
+// The loop bound is the lane's end but over-reads are bounded by n, so a lane may read past its end into another lane's bytes and still be inside the buffer.
+func (t *table) foldRowsLanes(data []byte, base int64) (int, error) {
+	n := len(data)
+	split := laneSplit(data, n/2)
+	// One lane cannot overlap anything, and a buffer too small to split is the tail's job anyway.
+	if split <= 0 || split >= n-maxRow {
+		return t.foldRowsPtr(data, base, false)
+	}
+	p := unsafe.Pointer(unsafe.SliceData(data))
+	aPos, bPos := 0, split
+
+	for aPos+maxRow <= split && bPos+maxRow <= n {
+		rowA, rowB := unsafe.Add(p, aPos), unsafe.Add(p, bPos)
+
+		// Both scans issue before either result is consumed; this is the whole point of the kernel and the reason the two are not folded into a helper.
+		sepA, semiA, _ := indexDelimAt(rowA, split-aPos)
+		sepB, semiB, _ := indexDelimAt(rowB, n-bPos)
+		if sepA < 0 || !semiA {
+			return 0, rowError(base+int64(aPos), data[aPos:])
+		}
+		if sepB < 0 || !semiB {
+			return 0, rowError(base+int64(bPos), data[bPos:])
+		}
+		if bPos+sepB+9 > n {
+			break
+		}
+
+		vA, nextA, okA := parseTempWordFrom(*(*uint64)(unsafe.Add(rowA, sepA+1)))
+		vB, nextB, okB := parseTempWordFrom(*(*uint64)(unsafe.Add(rowB, sepB+1)))
+		if !okA || !inRange(vA) {
+			return 0, rowError(base+int64(aPos), data[aPos:])
+		}
+		if !okB || !inRange(vB) {
+			return 0, rowError(base+int64(bPos), data[bPos:])
+		}
+
+		kwA := maskWord(*(*uint64)(rowA), sepA)
+		kwB := maskWord(*(*uint64)(rowB), sepB)
+		if !t.update(mixWord(kwA), kwA, unsafe.Slice((*byte)(rowA), sepA), vA) {
+			return 0, t.fullError(base + int64(aPos))
+		}
+		if !t.update(mixWord(kwB), kwB, unsafe.Slice((*byte)(rowB), sepB), vB) {
+			return 0, t.fullError(base + int64(bPos))
+		}
+		aPos += sepA + 1 + nextA
+		bPos += sepB + 1 + nextB
+	}
+
+	// Whichever lane still has bulk rows finishes alone, then lane A's remainder is closed against its own end so it never reads into lane B's rows.
+	if bPos < n {
+		got, err := t.foldRowsPtr(data[bPos:], base+int64(bPos), false)
+		if err != nil {
+			return 0, err
+		}
+		bPos += got
+	}
+	if err := t.foldTail(data[:split], aPos, base+int64(aPos)); err != nil {
+		return 0, err
+	}
+	return bPos, nil
+}
+
+// laneSplit returns the index just past the first newline at or after mid, or -1 when the buffer has none there.
+func laneSplit(data []byte, mid int) int {
+	for i := mid; i < len(data); i++ {
+		if data[i] == '\n' {
+			return i + 1
+		}
+	}
+	return -1
 }
 
 // foldTail closes the rows a kernel stopped short of, with the scalar path that never over-reads.

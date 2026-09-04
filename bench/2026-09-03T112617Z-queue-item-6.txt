@@ -1,0 +1,47 @@
+# experiment 2026-09-03T112617Z
+hypothesis: queue item 6
+prediction: oversubscription hides read stalls, 3-8%
+file:     measurements-1b.txt   runs: 5   warmup: 1   cooldown: 20s
+commit:   90b6ae839ceb54f39b1180d77d719351ac72e643 (DIRTY WORKING TREE)
+go:       go version go1.27.0 darwin/arm64
+machine:  Apple M5 Pro, hw.ncpu 15, 24 GiB, 26.5.2 arm64
+hyperfine: hyperfine 1.20.0
+power:    'AC Power' 	100%; charged; 0:00 remaining present: true
+load:     13:26  up 3 days,  3:45, 26 users, load averages: 5.53 4.15 3.72
+
+$ workers15: /Users/noelruault/go/src/github.com/noelruault/research/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -workers 15 > /dev/null
+$ workers20: /Users/noelruault/go/src/github.com/noelruault/research/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -workers 20 > /dev/null
+$ workers30: /Users/noelruault/go/src/github.com/noelruault/research/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -workers 30 > /dev/null
+
+Benchmark 1: workers15
+  Time (mean ± σ):      1.490 s ±  0.046 s    [User: 14.892 s, System: 1.876 s]
+  Range (min … max):    1.441 s …  1.556 s    5 runs
+ 
+Benchmark 2: workers20
+  Time (mean ± σ):      1.333 s ±  0.097 s    [User: 14.842 s, System: 1.866 s]
+  Range (min … max):    1.260 s …  1.494 s    5 runs
+ 
+Benchmark 3: workers30
+  Time (mean ± σ):      1.369 s ±  0.050 s    [User: 15.052 s, System: 1.995 s]
+  Range (min … max):    1.288 s …  1.422 s    5 runs
+ 
+Summary
+  workers20 ran
+    1.03 ± 0.08 times faster than workers30
+    1.12 ± 0.09 times faster than workers15
+
+== ledger row skeleton, paste into 07-experiment-ledger.md and write the verdict ==
+
+### E-NN — queue item 6
+
+- **Idea:** 
+- **Prediction:** oversubscription hides read stalls, 3-8%
+- **Measured, invocation 2026-09-03T112617Z (1b, 5 runs, one hyperfine invocation):**
+
+  | Command | Mean [s] | Min [s] | Max [s] | Relative |
+  |:---|---:|---:|---:|---:|
+  | `workers15` | 1.490 ± 0.046 | 1.441 | 1.556 | 1.12 ± 0.09 |
+  | `workers20` | 1.333 ± 0.097 | 1.260 | 1.494 | 1.00 |
+  | `workers30` | 1.369 ± 0.050 | 1.288 | 1.422 | 1.03 ± 0.08 |
+
+- **Verdict:** 

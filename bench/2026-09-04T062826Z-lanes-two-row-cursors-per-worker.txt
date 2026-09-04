@@ -1,0 +1,47 @@
+# experiment 2026-09-04T062826Z
+hypothesis: lanes: two row cursors per worker
+prediction: the row loop is latency-bound on a serial per-row chain (IPC 4.5 on a ~8-wide core); two interleaved cursors should take 5-15%
+file:     measurements-1b.txt   runs: 5   warmup: 1   cooldown: 20s
+commit:   8532097e8ee979cec9299429d51f87492e4c7528 (DIRTY WORKING TREE)
+go:       go version go1.27.0 darwin/arm64
+machine:  Apple M5 Pro, hw.ncpu 15, 24 GiB, 26.5.2 arm64
+hyperfine: hyperfine 1.20.0
+power:    'AC Power' 	80%; AC attached; not charging present: true
+load:      8:28  up 3 days, 22:47, 32 users, load averages: 5.55 5.72 5.28
+
+$ ptr.a: /Users/noelruault/go/src/github.com/noelruault/research/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+$ lanes: /Users/noelruault/go/src/github.com/noelruault/research/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -fold lanes > /dev/null
+$ ptr.b: /Users/noelruault/go/src/github.com/noelruault/research/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+
+Benchmark 1: ptr.a
+  Time (mean ± σ):      1.312 s ±  0.052 s    [User: 14.753 s, System: 1.883 s]
+  Range (min … max):    1.266 s …  1.399 s    5 runs
+ 
+Benchmark 2: lanes
+  Time (mean ± σ):      1.285 s ±  0.034 s    [User: 13.977 s, System: 1.966 s]
+  Range (min … max):    1.261 s …  1.342 s    5 runs
+ 
+Benchmark 3: ptr.b
+  Time (mean ± σ):      1.318 s ±  0.030 s    [User: 14.758 s, System: 1.938 s]
+  Range (min … max):    1.286 s …  1.354 s    5 runs
+ 
+Summary
+  lanes ran
+    1.02 ± 0.05 times faster than ptr.a
+    1.03 ± 0.04 times faster than ptr.b
+
+== ledger row skeleton, paste into 07-experiment-ledger.md and write the verdict ==
+
+### E-NN — lanes: two row cursors per worker
+
+- **Idea:** 
+- **Prediction:** the row loop is latency-bound on a serial per-row chain (IPC 4.5 on a ~8-wide core); two interleaved cursors should take 5-15%
+- **Measured, invocation 2026-09-04T062826Z (1b, 5 runs, one hyperfine invocation):**
+
+  | Command | Mean [s] | Min [s] | Max [s] | Relative |
+  |:---|---:|---:|---:|---:|
+  | `ptr.a` | 1.312 ± 0.052 | 1.266 | 1.399 | 1.02 ± 0.05 |
+  | `lanes` | 1.285 ± 0.034 | 1.261 | 1.342 | 1.00 |
+  | `ptr.b` | 1.318 ± 0.030 | 1.286 | 1.354 | 1.03 ± 0.04 |
+
+- **Verdict:** 
