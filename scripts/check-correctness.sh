@@ -23,6 +23,25 @@ cd "$REPO/1brc/code/go"
 go build -o bin/1brc .
 
 status=0
+
+# Upstream's own samples, and the only oracle here this study did not author: every case below compares us against our own reference, whose semantics were derived by READING the Java baseline, never executing it.
+# They are plain text, so the "no JDK on this machine" blocker never applied to them.
+upstream_pass=0
+for data in "$REPO"/1brc/testdata/upstream-samples/*.txt; do
+  want="${data%.txt}.out"
+  [[ -f $want ]] || { echo "check-correctness: MISSING expected output $want" >&2; status=1; continue; }
+  got=$("$BIN" -in "$data" ${ARM_ARGV[@]+"${ARM_ARGV[@]}"})
+  if [[ $got == "$(cat "$want")" ]]; then
+    upstream_pass=$((upstream_pass + 1))
+  else
+    echo "check-correctness: FAIL $(basename "$data") (upstream sample)${ARM:+ [$ARM]}" >&2
+    echo "  got : $got" >&2
+    echo "  want: $(cat "$want")" >&2
+    status=1
+  fi
+done
+echo "check-correctness: OK   upstream samples (${upstream_pass}/12 byte-identical)${ARM:+ [$ARM]}"
+
 for case in "${CASES[@]}"; do
   data="$ASSETS/${case%%|*}"
   want="$REPO/1brc/testdata/${case##*|}"

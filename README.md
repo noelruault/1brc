@@ -61,3 +61,5 @@ FILES=1b RUNS=5 WARMUP=1 bash 1brc/scripts/bench.sh <label>
 ```
 
 Machine of record: Apple M5 Pro, `hw.ncpu` 15, 24 GB, macOS 26.5.2 (Darwin kernel 25.5.0) arm64, go1.27.0. Leaderboard timings from the upstream repo are facts about a 32-core EPYC limited to 8 cores and are never compared against these as if the hardware were the same.
+
+**This number is not a leaderboard entry, and the protocol differs on three axes** — say so before quoting it anywhere near an upstream time. Upstream pins to **8 cores** (`numactl --physcpubind=0-7`), serves the file from a **RAM disk** so I/O is excluded, and takes a **trimmed mean of 10 runs** (`evaluate.sh:211`, dropping fastest and slowest). This study runs on **15 unpinned cores**, reads from **SSD with `F_NOCACHE` so I/O is included and measured**, and takes 5 hyperfine runs behind a 20 s cooldown inside a bracketed invocation. The storage difference alone is not a detail: 754 ms of the 1.233 s is the read floor, and upstream's protocol would have deleted it. Correctness is a different matter and is directly comparable — `check-correctness.sh` gates on upstream's own twelve sample pairs (`CORRECTIONS.md` C14).
