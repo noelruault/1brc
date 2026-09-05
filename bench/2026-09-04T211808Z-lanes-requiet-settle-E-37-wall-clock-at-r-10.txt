@@ -1,0 +1,47 @@
+# experiment 2026-09-04T211808Z
+hypothesis: lanes-requiet: settle E-37 wall clock at -r 10
+prediction: E-37 saw wall -2.28% overlapping and user CPU -5.28% against a 0.034% control bracket. At -r 10 bracketed: a real wall win lands 2-5% and disjoint; else arms overlap and lanes stays a flag. CPU predicted to reproduce -5.28% regardless.
+file:     measurements-1b.txt   runs: 10   warmup: 1   cooldown: 20s
+commit:   fb198d0941bc1ca9259459a1fe892a430ff109dd (DIRTY WORKING TREE)
+go:       go version go1.27.0 darwin/arm64
+machine:  Apple M5 Pro, hw.ncpu 15, 24 GiB, 26.5.2 arm64
+hyperfine: hyperfine 1.20.0
+power:    'AC Power' 	80%; AC attached; not charging present: true
+load:     23:18  up 4 days, 13:37, 29 users, load averages: 4.42 3.61 3.34
+
+$ ptr.a: /Users/noelruault/go/src/github.com/noelruault/research/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+$ lanes: /Users/noelruault/go/src/github.com/noelruault/research/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -fold lanes > /dev/null
+$ ptr.b: /Users/noelruault/go/src/github.com/noelruault/research/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+
+Benchmark 1: ptr.a
+  Time (mean ± σ):      1.287 s ±  0.047 s    [User: 14.862 s, System: 1.833 s]
+  Range (min … max):    1.227 s …  1.401 s    10 runs
+ 
+Benchmark 2: lanes
+  Time (mean ± σ):      1.241 s ±  0.034 s    [User: 14.108 s, System: 1.877 s]
+  Range (min … max):    1.199 s …  1.309 s    10 runs
+ 
+Benchmark 3: ptr.b
+  Time (mean ± σ):      1.287 s ±  0.051 s    [User: 14.890 s, System: 1.835 s]
+  Range (min … max):    1.220 s …  1.368 s    10 runs
+ 
+Summary
+  lanes ran
+    1.04 ± 0.05 times faster than ptr.a
+    1.04 ± 0.05 times faster than ptr.b
+
+== ledger row skeleton, paste into 07-experiment-ledger.md and write the verdict ==
+
+### E-NN — lanes-requiet: settle E-37 wall clock at -r 10
+
+- **Idea:** 
+- **Prediction:** E-37 saw wall -2.28% overlapping and user CPU -5.28% against a 0.034% control bracket. At -r 10 bracketed: a real wall win lands 2-5% and disjoint; else arms overlap and lanes stays a flag. CPU predicted to reproduce -5.28% regardless.
+- **Measured, invocation 2026-09-04T211808Z (1b, 10 runs, one hyperfine invocation):**
+
+  | Command | Mean [s] | Min [s] | Max [s] | Relative |
+  |:---|---:|---:|---:|---:|
+  | `ptr.a` | 1.287 ± 0.047 | 1.227 | 1.401 | 1.04 ± 0.05 |
+  | `lanes` | 1.241 ± 0.034 | 1.199 | 1.309 | 1.00 |
+  | `ptr.b` | 1.287 ± 0.051 | 1.220 | 1.368 | 1.04 ± 0.05 |
+
+- **Verdict:** 

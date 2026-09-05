@@ -1,0 +1,56 @@
+# experiment 2026-09-05T065908Z
+hypothesis: make bench: the measured winners
+prediction: sweep: re-times the shipped default against the arms that won their groups
+file:     measurements-1b.txt   runs: 3   warmup: 1   cooldown: 20s
+commit:   f625763d676f63e9c91eaf7d6b58ac97623ae3b2 (DIRTY WORKING TREE)
+go:       go version go1.27.0 darwin/arm64
+machine:  Apple M5 Pro, hw.ncpu 15, 24 GiB, 26.5.2 arm64
+hyperfine: hyperfine 1.20.0
+power:    'AC Power' 	80%; AC attached; not charging present: true
+load:      8:59  up 4 days, 23:18, 30 users, load averages: 4.05 2.74 2.29
+
+$ default.a: /Users/noelruault/go/src/github.com/noelruault/research/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+$ lanes: /Users/noelruault/go/src/github.com/noelruault/research/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -fold lanes > /dev/null
+$ lanes-w24: /Users/noelruault/go/src/github.com/noelruault/research/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -fold lanes -workers 24 > /dev/null
+$ default.b: /Users/noelruault/go/src/github.com/noelruault/research/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+
+Benchmark 1: default.a
+  Time (mean ± σ):      1.217 s ±  0.008 s    [User: 14.828 s, System: 1.731 s]
+  Range (min … max):    1.208 s …  1.224 s    3 runs
+ 
+Benchmark 2: lanes
+  Time (mean ± σ):      1.165 s ±  0.009 s    [User: 14.045 s, System: 1.719 s]
+  Range (min … max):    1.156 s …  1.174 s    3 runs
+ 
+Benchmark 3: lanes-w24
+  Time (mean ± σ):      1.187 s ±  0.021 s    [User: 14.003 s, System: 1.882 s]
+  Range (min … max):    1.166 s …  1.207 s    3 runs
+ 
+Benchmark 4: default.b
+  Time (mean ± σ):      1.339 s ±  0.064 s    [User: 14.923 s, System: 1.940 s]
+  Range (min … max):    1.299 s …  1.414 s    3 runs
+ 
+  Warning: Statistical outliers were detected. Consider re-running this benchmark on a quiet system without any interferences from other programs.
+ 
+Summary
+  lanes ran
+    1.02 ± 0.02 times faster than lanes-w24
+    1.04 ± 0.01 times faster than default.a
+    1.15 ± 0.06 times faster than default.b
+
+== ledger row skeleton, paste into 07-experiment-ledger.md and write the verdict ==
+
+### E-NN — make bench: the measured winners
+
+- **Idea:** 
+- **Prediction:** sweep: re-times the shipped default against the arms that won their groups
+- **Measured, invocation 2026-09-05T065908Z (1b, 3 runs, one hyperfine invocation):**
+
+  | Command | Mean [s] | Min [s] | Max [s] | Relative |
+  |:---|---:|---:|---:|---:|
+  | `default.a` | 1.217 ± 0.008 | 1.208 | 1.224 | 1.04 ± 0.01 |
+  | `lanes` | 1.165 ± 0.009 | 1.156 | 1.174 | 1.00 |
+  | `lanes-w24` | 1.187 ± 0.021 | 1.166 | 1.207 | 1.02 ± 0.02 |
+  | `default.b` | 1.339 ± 0.064 | 1.299 | 1.414 | 1.15 ± 0.06 |
+
+- **Verdict:** 

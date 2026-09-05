@@ -1,0 +1,55 @@
+# experiment 2026-09-05T210424Z
+hypothesis: lanes-four: 1 vs 2 vs 4 row cursors
+prediction: two cursors bought -5.2% user CPU by filling stalls. Ragnar measured a further -8% wall going from 2-wide to 4-wide in Rust. Prediction: lanes4 takes another 2-6% of user CPU over lanes, or plateaus/loses to register and cache pressure over four live rows. A measured plateau is the useful answer.
+file:     measurements-1b.txt   runs: 5   warmup: 1   cooldown: 20s
+commit:   f625763d676f63e9c91eaf7d6b58ac97623ae3b2 (DIRTY WORKING TREE)
+go:       go version go1.27.0 darwin/arm64
+machine:  Apple M5 Pro, hw.ncpu 15, 24 GiB, 26.5.2 arm64
+hyperfine: hyperfine 1.20.0
+power:    'Battery Power' 	14%; discharging; 1:35 remaining present: true
+load:     23:04  up 5 days, 13:23, 33 users, load averages: 3.23 2.44 2.20
+PROVISIONAL: measured on battery, spec.md:42 requires the headline on AC power
+
+$ ptr.a: /Users/noelruault/go/src/github.com/noelruault/research/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+$ lanes: /Users/noelruault/go/src/github.com/noelruault/research/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -fold lanes > /dev/null
+$ lanes4: /Users/noelruault/go/src/github.com/noelruault/research/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -fold lanes4 > /dev/null
+$ ptr.b: /Users/noelruault/go/src/github.com/noelruault/research/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+
+Benchmark 1: ptr.a
+  Time (mean ± σ):      1.233 s ±  0.009 s    [User: 14.840 s, System: 1.763 s]
+  Range (min … max):    1.220 s …  1.242 s    5 runs
+ 
+Benchmark 2: lanes
+  Time (mean ± σ):      1.202 s ±  0.032 s    [User: 14.085 s, System: 1.840 s]
+  Range (min … max):    1.165 s …  1.241 s    5 runs
+ 
+Benchmark 3: lanes4
+  Time (mean ± σ):      1.258 s ±  0.015 s    [User: 15.285 s, System: 1.755 s]
+  Range (min … max):    1.241 s …  1.276 s    5 runs
+ 
+Benchmark 4: ptr.b
+  Time (mean ± σ):      1.240 s ±  0.014 s    [User: 14.859 s, System: 1.815 s]
+  Range (min … max):    1.218 s …  1.251 s    5 runs
+ 
+Summary
+  lanes ran
+    1.03 ± 0.03 times faster than ptr.a
+    1.03 ± 0.03 times faster than ptr.b
+    1.05 ± 0.03 times faster than lanes4
+
+== ledger row skeleton, paste into 07-experiment-ledger.md and write the verdict ==
+
+### E-NN — lanes-four: 1 vs 2 vs 4 row cursors
+
+- **Idea:** 
+- **Prediction:** two cursors bought -5.2% user CPU by filling stalls. Ragnar measured a further -8% wall going from 2-wide to 4-wide in Rust. Prediction: lanes4 takes another 2-6% of user CPU over lanes, or plateaus/loses to register and cache pressure over four live rows. A measured plateau is the useful answer.
+- **Measured, invocation 2026-09-05T210424Z (1b, 5 runs, one hyperfine invocation):**
+
+  | Command | Mean [s] | Min [s] | Max [s] | Relative |
+  |:---|---:|---:|---:|---:|
+  | `ptr.a` | 1.233 ± 0.009 | 1.220 | 1.242 | 1.03 ± 0.03 |
+  | `lanes` | 1.202 ± 0.032 | 1.165 | 1.241 | 1.00 |
+  | `lanes4` | 1.258 ± 0.015 | 1.241 | 1.276 | 1.05 ± 0.03 |
+  | `ptr.b` | 1.240 ± 0.014 | 1.218 | 1.251 | 1.03 ± 0.03 |
+
+- **Verdict:** 

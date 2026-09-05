@@ -246,6 +246,8 @@ func (t *table) fold(data []byte, k kernel, pk parseKind, fk foldKind, base int6
 			pos, err = t.foldRowsPtr(data, base, true)
 		case foldLanes:
 			pos, err = t.foldRowsLanes(data, base)
+		case foldLanes4:
+			pos, err = t.foldRowsLanes4(data, base)
 		default:
 			pos, err = t.foldRows(data, pk, base)
 		}
@@ -423,6 +425,89 @@ func (t *table) foldRowsLanes(data []byte, base int64) (int, error) {
 		return 0, err
 	}
 	return bPos, nil
+}
+
+// foldRowsLanes4 is foldRowsLanes with four cursors instead of two.
+//
+// Two cursors measured -5.2% of user CPU by giving the core a second dependency chain; four tests whether the out-of-order window has room for more, or whether register and cache pressure over four live rows takes it back.
+// The four are held in fixed-size arrays indexed by CONSTANTS so each stays in its own register: a loop over lanes would serialise them through memory and remove the only thing this kernel exists to add.
+func (t *table) foldRowsLanes4(data []byte, base int64) (int, error) {
+	n := len(data)
+	var pos, end [4]int
+	for i := range 4 {
+		start := 0
+		if i > 0 {
+			start = laneSplit(data, n*i/4)
+			if start <= 0 {
+				return t.foldRowsLanes(data, base)
+			}
+		}
+		pos[i] = start
+		if i > 0 {
+			end[i-1] = start
+		}
+	}
+	end[3] = n
+	// Lanes must be strictly increasing and each wide enough to hold a row, or the split degenerates and two cursors are the better shape.
+	for i := range 4 {
+		if pos[i]+maxRow > end[i] {
+			return t.foldRowsLanes(data, base)
+		}
+	}
+
+	p := unsafe.Pointer(unsafe.SliceData(data))
+	var row [4]unsafe.Pointer
+	var sep [4]int
+	var semi [4]bool
+	var v [4]int32
+	var next [4]int
+
+	for pos[0]+maxRow <= end[0] && pos[1]+maxRow <= end[1] && pos[2]+maxRow <= end[2] && pos[3]+maxRow <= end[3] {
+		row[0], row[1] = unsafe.Add(p, pos[0]), unsafe.Add(p, pos[1])
+		row[2], row[3] = unsafe.Add(p, pos[2]), unsafe.Add(p, pos[3])
+
+		sep[0], semi[0], _ = indexDelimAt(row[0], end[0]-pos[0])
+		sep[1], semi[1], _ = indexDelimAt(row[1], end[1]-pos[1])
+		sep[2], semi[2], _ = indexDelimAt(row[2], end[2]-pos[2])
+		sep[3], semi[3], _ = indexDelimAt(row[3], end[3]-pos[3])
+
+		for i := range 4 {
+			if sep[i] < 0 || !semi[i] {
+				return 0, rowError(base+int64(pos[i]), data[pos[i]:])
+			}
+		}
+		if pos[3]+sep[3]+9 > n {
+			break
+		}
+
+		var ok [4]bool
+		v[0], next[0], ok[0] = parseTempWordFrom(*(*uint64)(unsafe.Add(row[0], sep[0]+1)))
+		v[1], next[1], ok[1] = parseTempWordFrom(*(*uint64)(unsafe.Add(row[1], sep[1]+1)))
+		v[2], next[2], ok[2] = parseTempWordFrom(*(*uint64)(unsafe.Add(row[2], sep[2]+1)))
+		v[3], next[3], ok[3] = parseTempWordFrom(*(*uint64)(unsafe.Add(row[3], sep[3]+1)))
+
+		for i := range 4 {
+			if !ok[i] || !inRange(v[i]) {
+				return 0, rowError(base+int64(pos[i]), data[pos[i]:])
+			}
+		}
+
+		for i := range 4 {
+			kw := maskWord(*(*uint64)(row[i]), sep[i])
+			if !t.update(mixWord(kw), kw, unsafe.Slice((*byte)(row[i]), sep[i]), v[i]) {
+				return 0, t.fullError(base + int64(pos[i]))
+			}
+			pos[i] += sep[i] + 1 + next[i]
+		}
+	}
+
+	// Each lane closes its own remainder against its own end, so no lane reads rows another lane owns.
+	for i := range 4 {
+		if err := t.foldTail(data[:end[i]], pos[i], base+int64(pos[i])); err != nil {
+			return 0, err
+		}
+	}
+	return n, nil
 }
 
 // laneSplit returns the index just past the first newline at or after mid, or -1 when the buffer has none there.
