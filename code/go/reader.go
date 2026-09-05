@@ -282,6 +282,8 @@ const (
 	foldBoth
 	foldLanes
 	foldLanes4
+	// foldKindCount must stay last. TestEveryFoldArmIsExercised compares it against the arm registry, so a new arm cannot be added without joining the differential test that proves every arm agrees.
+	foldKindCount
 )
 
 func foldMode(name string) (foldKind, error) {

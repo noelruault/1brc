@@ -11,7 +11,7 @@ ONLY="${ONLY:-}"
 
 # name | prediction | arm...; the incumbent bracket is appended at both ends automatically.
 groups=(
-  "fold|E-27 kept the pointer walk and E-37 added two cursors; ranks the whole row-loop family, 0-15% spread expected|slice=-fold slice|hash=-fold hash|both=-fold both|lanes=-fold lanes"
+  "fold|E-27 kept the pointer walk, E-37/E-38 added two cursors and E-39 killed four; the four-wide loss is a register-pressure result on arm64 and is exactly the kind of ranking a different register file can invert|slice=-fold slice|hash=-fold hash|both=-fold both|lanes=-fold lanes|lanes4=-fold lanes4"
   "kernel|E-10 killed both batch tokenizers here at +9.8%/+10.4% end to end against a -40.4% microbenchmark; a machine with different vector-to-general cost may rank them differently|batch-swar=-kernel batch-swar|batch-neon=-kernel batch-neon"
   "parse|E-25 kept the word parse and H3 kept branchless over scalar; the branchless win was 11.4% at 1b having LOST 15.2% in its microbenchmark|branchless=-parse branchless|scalar=-parse scalar"
   "table|E-33 measured the runtime map 12.81% FASTER in the 10k regime and E-34 slower on 413 keys; the crossover is the point of this group|split=-table split|quot=-table quot|map=-table map"

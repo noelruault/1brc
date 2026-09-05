@@ -748,7 +748,9 @@ func TestFoldArmsAgree(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			data := []byte(tc.body)
 			want, wantSize, wantErr := foldArm(t, foldSlice, data)
-			for _, fk := range []foldKind{foldHash, foldPtr, foldBoth} {
+			// The registry, not a hand-picked subset: allFoldArms is guarded against a new arm being added without reaching this corpus.
+			for _, arm := range allFoldArms {
+				fk := arm.kind
 				got, gotSize, gotErr := foldArm(t, fk, data)
 				if (gotErr == nil) != (wantErr == nil) {
 					t.Fatalf("fold %d: err %v, incumbent err %v", fk, gotErr, wantErr)

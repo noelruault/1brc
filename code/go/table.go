@@ -383,10 +383,10 @@ func (t *table) foldRowsLanes(data []byte, base int64) (int, error) {
 		sepA, semiA, _ := indexDelimAt(rowA, split-aPos)
 		sepB, semiB, _ := indexDelimAt(rowB, n-bPos)
 		if sepA < 0 || !semiA {
-			return 0, rowError(base+int64(aPos), data[aPos:])
+			return 0, t.canonicalRowError(data, base, rowError(base+int64(aPos), data[aPos:]))
 		}
 		if sepB < 0 || !semiB {
-			return 0, rowError(base+int64(bPos), data[bPos:])
+			return 0, t.canonicalRowError(data, base, rowError(base+int64(bPos), data[bPos:]))
 		}
 		if bPos+sepB+9 > n {
 			break
@@ -395,10 +395,10 @@ func (t *table) foldRowsLanes(data []byte, base int64) (int, error) {
 		vA, nextA, okA := parseTempWordFrom(*(*uint64)(unsafe.Add(rowA, sepA+1)))
 		vB, nextB, okB := parseTempWordFrom(*(*uint64)(unsafe.Add(rowB, sepB+1)))
 		if !okA || !inRange(vA) {
-			return 0, rowError(base+int64(aPos), data[aPos:])
+			return 0, t.canonicalRowError(data, base, rowError(base+int64(aPos), data[aPos:]))
 		}
 		if !okB || !inRange(vB) {
-			return 0, rowError(base+int64(bPos), data[bPos:])
+			return 0, t.canonicalRowError(data, base, rowError(base+int64(bPos), data[bPos:]))
 		}
 
 		kwA := maskWord(*(*uint64)(rowA), sepA)
@@ -417,12 +417,12 @@ func (t *table) foldRowsLanes(data []byte, base int64) (int, error) {
 	if bPos < n {
 		got, err := t.foldRowsPtr(data[bPos:], base+int64(bPos), false)
 		if err != nil {
-			return 0, err
+			return 0, t.canonicalRowError(data, base, err)
 		}
 		bPos += got
 	}
 	if err := t.foldTail(data[:split], aPos, base+int64(aPos)); err != nil {
-		return 0, err
+		return 0, t.canonicalRowError(data, base, err)
 	}
 	return bPos, nil
 }
@@ -473,7 +473,7 @@ func (t *table) foldRowsLanes4(data []byte, base int64) (int, error) {
 
 		for i := range 4 {
 			if sep[i] < 0 || !semi[i] {
-				return 0, rowError(base+int64(pos[i]), data[pos[i]:])
+				return 0, t.canonicalRowError(data, base, rowError(base+int64(pos[i]), data[pos[i]:]))
 			}
 		}
 		if pos[3]+sep[3]+9 > n {
@@ -488,7 +488,7 @@ func (t *table) foldRowsLanes4(data []byte, base int64) (int, error) {
 
 		for i := range 4 {
 			if !ok[i] || !inRange(v[i]) {
-				return 0, rowError(base+int64(pos[i]), data[pos[i]:])
+				return 0, t.canonicalRowError(data, base, rowError(base+int64(pos[i]), data[pos[i]:]))
 			}
 		}
 
@@ -504,10 +504,23 @@ func (t *table) foldRowsLanes4(data []byte, base int64) (int, error) {
 	// Each lane closes its own remainder against its own end, so no lane reads rows another lane owns.
 	for i := range 4 {
 		if err := t.foldTail(data[:end[i]], pos[i], base+int64(pos[i])); err != nil {
-			return 0, err
+			return 0, t.canonicalRowError(data, base, err)
 		}
 	}
 	return n, nil
+}
+
+// canonicalRowError re-walks the buffer serially so a multi-cursor kernel reports the error the single-cursor walk would.
+// Cursors retire rows out of order, so the first bad row a lane meets is not the first bad row in the FILE, and the offset in the message would depend on the lane count.
+// The table is discarded whenever a fold returns an error, so re-walking costs nothing that matters and only ever runs on malformed input.
+func (t *table) canonicalRowError(data []byte, base int64, found error) error {
+	if _, err := t.foldRowsPtr(data, base, false); err != nil {
+		return err
+	}
+	if err := t.foldTail(data, 0, base); err != nil {
+		return err
+	}
+	return found
 }
 
 // laneSplit returns the index just past the first newline at or after mid, or -1 when the buffer has none there.
