@@ -39,3 +39,24 @@ Three rules govern every number here.
 **A delta only exists inside one bracketed invocation.** All arms run in a single `hyperfine` invocation with a 20 s cooldown, and the incumbent is named first *and* last. If the two incumbent slots disagree by more than 3%, no arm in that invocation may be quoted.
 
 **Measured, derived, hypothesis.** Every claim carries its label. A comparative claim is a hypothesis until benchmarked on this machine, and leaderboard timings from other hardware are never compared against these as though the hardware were the same.
+
+## Experiment 1: the physical floor
+
+Before writing a fast implementation, measure how long it takes to merely touch 13.8 GB.
+
+| how the bytes are read | 1b wall clock | GB/s |
+|---|---|---|
+| `read()`, 1 MiB × 15 parallel readers, uncached | **754.4 ms ± 8.8 ms** | 18.29 |
+| `read()`, 1 MiB × 8 parallel readers, page-cached | 1.126 s ± 0.007 s | 12.25 |
+| `read()`, 1 MiB, single reader, page-cached | 1.221 s | 11.30 |
+| `dd bs=1m`, page-cached | 1.343 s | 10.28 |
+
+Two results, both counter to the usual advice.
+
+**The page cache loses.** The file is 12.85 GiB against 24.00 GiB of RAM. After two sequential passes, free memory is 57.8 MiB and only 9.47 GiB sits on the active+inactive lists, so macOS evicts the head of the file while the tail is being read. Requesting *uncached* reads with `fcntl(fd, F_NOCACHE, 1)` is 1.49× faster than letting the cache try.
+
+**Parallel readers scale where a single one does not.** 15 readers reach 18.29 GB/s where one reaches 11.30.
+
+The floor sets the budget: **1.000 s over 1e9 rows is 1.00 ns/row, or 13.80 GB/s.** The read alone consumes 0.754 s of that. Whatever the parser does, it does it in the remaining 246 ms, or it overlaps with the read.
+
+A note on what this number is not. `F_NOCACHE` prevents *new* caching but does not purge pages already resident, so it is labelled **uncached**, never *cold*. A true cold measurement needs `purge`, which needs sudo, and no such number exists in this study.
