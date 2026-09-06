@@ -60,3 +60,13 @@ Two results, both counter to the usual advice.
 The floor sets the budget: **1.000 s over 1e9 rows is 1.00 ns/row, or 13.80 GB/s.** The read alone consumes 0.754 s of that. Whatever the parser does, it does it in the remaining 246 ms, or it overlaps with the read.
 
 A note on what this number is not. `F_NOCACHE` prevents *new* caching but does not purge pages already resident, so it is labelled **uncached**, never *cold*. A true cold measurement needs `purge`, which needs sudo, and no such number exists in this study.
+
+## Experiment 2: mmap, and why the usual answer is wrong here
+
+Nearly every top 1BRC entry memory-maps the file. All of them run on Linux, most with huge pages available. Measured here, mmap is **5.6× slower end to end** than parallel `read()`, and the mechanism is not memory pressure.
+
+The tempting explanation is that the file exceeds what RAM can hold. That explanation is wrong, and a smaller file disproves it: on a 137 MB file, entirely resident, mmap still reaches only **17.25 GB/s against 59.20 GB/s** for `read()` plus a count. mmap scales **1.15×** from 1 to 8 workers where `read()` scales **3.6×**.
+
+The cause is the fault path. Darwin uses 16 KiB pages, so the 1b file takes **842,067 faults**, and that path does not parallelise. `MADV_WILLNEED` makes it worse rather than better.
+
+**This is a property of this operating system, not of mmap.** On a kernel with transparent huge pages the fault count drops by three orders of magnitude and the ranking may invert. The arm stays shipped behind `-io mmap` for exactly that reason.
