@@ -209,3 +209,40 @@ The profile of the shipped default, for orientation rather than as a verdict:
      0.70s  5.83%   main.(*table).update      (cum 11.24%)
      0.59s  4.91%   runtime.memequal
 ```
+
+## Experiment 11: two row cursors
+
+**1.233 s → 1.202 s, and user CPU 14.85 s → 14.09 s.**
+
+The row loop is latency-bound, not throughput-bound, and the profile does not show it. A row starts at `pos + sep + 1 + width`, and `width` is unknown until that row's own number is parsed and retired. One cursor gives the core a single serial dependency chain per row with no independent work to fill the stalls. Measured IPC is **≈4.5** (279.1 instructions/row over ~61.6 G cycles) on a roughly 8-wide core.
+
+The fix is more chains, not fewer instructions. Split each buffer at a **row boundary** and advance two cursors in lockstep:
+
+```go
+// Both scans issue before either result is consumed. This is the whole
+// kernel, and the reason the two are not folded into a helper called twice.
+sepA, semiA, _ := indexDelimAt(rowA, endA-posA)
+sepB, semiB, _ := indexDelimAt(rowB, endB-posB)
+vA, nextA, okA := parseTempWordFrom(*(*uint64)(unsafe.Add(rowA, sepA+1)))
+vB, nextB, okB := parseTempWordFrom(*(*uint64)(unsafe.Add(rowB, sepB+1)))
+```
+
+Correctness is free: each lane owns whole rows, and min/max/sum/count commute.
+
+Measured across four independent invocations: **user CPU −5.15% to −5.28%**, against control brackets of 0.034% and 0.188%. Wall clock **−2.79%** against a **0.57%** bracket, and in the tightest invocation **−3.57%** against a **0.000%** bracket where both incumbent slots landed on 1.287 s to the millisecond.
+
+Two things this measurement teaches beyond the win.
+
+**A tight bracket does not imply tight arms.** On a busy machine, per-arm σ reached 4% while the incumbent slots agreed exactly, because the cooldown spreads every arm's runs across the same noise. So a delta can be quotable while its ranges still overlap. *Quotable* and *disjoint* are separate tests, and a default change wants the second one.
+
+**The wall win is consistently smaller than the CPU win**, because removing compute makes whatever else gates the pipeline bind harder. Wall-above-floor rose from 29.8% to 32.0% in the same measurement that produced the win.
+
+## Experiment 12: four cursors
+
+**Killed. +1.74% wall, +2.93% user CPU** against a 0.57% bracket, which is worse than the *one*-cursor incumbent rather than merely worse than two.
+
+The prediction registered before the run allowed for exactly this: either another 2-6% of CPU, or a plateau as register and cache pressure over four live rows takes back what the extra chains buy. A measured plateau was named in advance as the useful answer, and it is what arrived. The out-of-order window on this core is saturated at two.
+
+The same change is worth **−8% in a Rust implementation on x86-64**. That is a register-budget difference, not a contradiction, and it is why `-fold lanes4` stays shipped rather than deleted.
+
+The ILP direction is now **bounded, not open**: two cursors is the optimum here, and "more ILP" is no longer an available lever on this machine.
