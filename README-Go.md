@@ -311,14 +311,14 @@ The harness refuses rather than warns. It takes an exclusive lock, waits out a b
 
 ## Full record
 
-- [`01-definition.md`](01-definition.md) — the rules, read from upstream's source rather than its prose
-- [`02-baseline.md`](02-baseline.md) — the physical floor
-- [`03-technique-recon.md`](03-technique-recon.md) — technique inventory from the top entries
-- [`04-asm-kernels.md`](04-asm-kernels.md) — four arm64 tokenizer kernels measured
-- [`05-go-techniques.md`](05-go-techniques.md) — unsafe, BCE, hashing, sharding
-- [`06-cross-disciplinary-transfer.md`](06-cross-disciplinary-transfer.md) — mechanisms borrowed from other fields
-- [`07-experiment-ledger.md`](07-experiment-ledger.md) — all 40 experiments, each with its prediction
-- [`08-method-what-worked.md`](08-method-what-worked.md) — the method retrospective
-- [`09-result.md`](09-result.md) — the closing statement
-- [`CORRECTIONS.md`](CORRECTIONS.md) — every published figure that a later measurement moved
-- [`PARKED.md`](PARKED.md) — nine ideas with the number that parked them and a runnable revive trigger
+- [`01-definition.md`](01-definition.md), the rules, read from upstream's source rather than its prose
+- [`02-baseline.md`](02-baseline.md), the physical floor
+- [`03-technique-recon.md`](03-technique-recon.md), technique inventory from the top entries
+- [`04-asm-kernels.md`](04-asm-kernels.md), four arm64 tokenizer kernels measured
+- [`05-go-techniques.md`](05-go-techniques.md), unsafe, BCE, hashing, sharding
+- [`06-cross-disciplinary-transfer.md`](06-cross-disciplinary-transfer.md), mechanisms borrowed from other fields
+- [`07-experiment-ledger.md`](07-experiment-ledger.md), all 40 experiments, each with its prediction
+- [`08-method-what-worked.md`](08-method-what-worked.md), the method retrospective
+- [`09-result.md`](09-result.md), the closing statement
+- [`CORRECTIONS.md`](CORRECTIONS.md), every published figure that a later measurement moved
+- [`PARKED.md`](PARKED.md), nine ideas with the number that parked them and a runnable revive trigger
