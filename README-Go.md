@@ -178,3 +178,34 @@ The end-to-end gap is larger than the probe gap, and the reason is not the probe
 Two things follow. **The right structure is a property of the deployment, not of the code**, so the alternative stays behind `-table map` rather than being deleted. And a lookup microbenchmark measures the lookup while the deployment pays the retention.
 
 The 10k file itself needed a decision. Holding *rows* constant would produce a 57.09 GB input at 2.22× RAM, whose read floor alone is 3.12 s, answering a different question. Holding *bytes* constant gives 241.6M rows at 13.80 GB, which reproduces the memory regime the 1b file establishes. When you change a key regime, hold the memory regime.
+
+## Experiment 10: decomposing the remaining gap
+
+At 1.233 s against a 1.000 s target, the question is where 233 ms lives. `wall × cores` is an identity, so the answer needs no model:
+
+```
+wall × cores  =  user CPU  +  system CPU  +  idle-core time
+   18.03 s    =   14.09 s  +    1.84 s    +    2.10 s
+    (100%)        (78.1%)      (10.2%)        (11.7%)
+```
+
+Reproduced to the digit across three unprofiled rounds. It closes a third of the search space immediately:
+
+**The system share is the kernel copying 13.8 GB into the worker buffers.** It scales with bytes, not with the 13,160 calls, so no buffer size touches it. The only mechanism that removes a copy is mmap, already killed at 5.6×. Those points are **closed, not open**.
+
+**The idle share is a supply problem.** 12.85 workers of 20 have work at any instant, coexisting with 0.63 workers' worth descheduled. Perfect packing computes to **1.0740 s**, still +7.40% over target. It is a candidate for the gap and never for the goal.
+
+**The compute floor is 14.09 s over 15 cores = 0.939 s, already below the 1.000 s target.** So compute is not what makes the target unreachable.
+
+Instrument costs, measured rather than assumed: `-cpuprofile` costs **+13.7% of wall clock** and **+0.015% of instructions retired** (279,161,109,302 against 279,120,176,115). A profiled run's *shares* rank functions; its *seconds* are not the binary's. The same counter gives the study its per-row figure: **279.1 instructions per row.**
+
+The profile of the shipped default, for orientation rather than as a verdict:
+
+```
+      flat  flat%                        function
+     5.94s 49.46%   syscall.rawsyscalln
+     2.45s 20.40%   main.indexDelimAt
+     1.34s 11.16%   main.parseTempWordFrom
+     0.70s  5.83%   main.(*table).update      (cum 11.24%)
+     0.59s  4.91%   runtime.memequal
+```
