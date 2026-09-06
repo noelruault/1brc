@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 set -uo pipefail
-REPO=/Users/noelruault/go/src/github.com/noelruault/research-1brc
+# Was an absolute path to one checkout, which only ran on the machine that wrote it. scripts/ and code/ are siblings in every layout, so anchor there.
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ASSETS=/Users/noelruault/Downloads/1brc/1brc-assets
-BIN=$REPO/1brc/code/go/bin/1brc
+BIN=$REPO/code/go/bin/1brc
 IN=$ASSETS/measurements-1b.txt
-source "$REPO/1brc/scripts/lib-provenance.sh"
+source "$REPO/scripts/lib-provenance.sh"
 
 measure_lock_acquire "go-opt-round-3-gap instrument pass" || exit 3
 trap measure_lock_release EXIT

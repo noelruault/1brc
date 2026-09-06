@@ -4,11 +4,12 @@
 # The rules it refuses to let you break are in 07-experiment-ledger.md's header.
 set -euo pipefail
 
-REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# scripts/ and code/ are siblings in both layouts this study ships in, so anchor on the script's parent rather than counting levels to a repo root that moves.
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ASSETS="${ASSETS:-/Users/noelruault/Downloads/1brc/1brc-assets}"
-BIN="$REPO/1brc/code/go/bin/1brc"
+BIN="$REPO/code/go/bin/1brc"
 # shellcheck source=lib-provenance.sh
-source "$REPO/1brc/scripts/lib-provenance.sh"
+source "$REPO/scripts/lib-provenance.sh"
 
 die() { echo "experiment: $*" >&2; exit 2; }
 
@@ -93,27 +94,27 @@ run() {
   # Installed with the lock, not with $md below, so an arm failing the correctness gate still releases it.
   trap 'rm -f "$md"; measure_lock_release' EXIT
 
-  cd "$REPO/1brc/code/go"
+  cd "$REPO/code/go"
   go build -o bin/1brc .
 
   # A committed reference output for the timed file means the arm can be checked on the file it is about to be ranked on, not only on the two 10m gate cases. 1b has none (the reference is 39.8 ns/row single-threaded), so the default regime is unaffected.
   local extra=""
-  if [[ -f $REPO/1brc/testdata/expected-$FILE.out ]]; then
+  if [[ -f $REPO/testdata/expected-$FILE.out ]]; then
     extra="measurements-$FILE.txt|expected-$FILE.out"
   fi
 
   local i
   for ((i = 0; i < ${#ARM_NAMES[@]}; i++)); do
     echo "experiment: correctness gate for arm '${ARM_NAMES[i]}' (${ARM_FLAGS[i]:-no flags})"
-    ARM="${ARM_FLAGS[i]}" ASSETS="$ASSETS" CASES_EXTRA="$extra" bash "$REPO/1brc/scripts/check-correctness.sh" \
+    ARM="${ARM_FLAGS[i]}" ASSETS="$ASSETS" CASES_EXTRA="$extra" bash "$REPO/scripts/check-correctness.sh" \
       || die "arm '${ARM_NAMES[i]}' fails the byte-compare. spec.md: that is a bug, not a result."
   done
 
-  mkdir -p "$REPO/1brc/bench"
+  mkdir -p "$REPO/bench"
   local stamp out slug
   stamp="$(date -u +%Y-%m-%dT%H%M%SZ)"
   slug="$(echo "$HYP" | tr -cs '[:alnum:]' '-' | sed 's/^-//;s/-$//')"
-  out="$REPO/1brc/bench/$stamp-$slug.txt"
+  out="$REPO/bench/$stamp-$slug.txt"
   md="$(mktemp)"
   require_quiet
 

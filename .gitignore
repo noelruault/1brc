@@ -1,0 +1,4 @@
+bin/
+# `go build ./...` in a main package writes the binary next to the source, named after the directory.
+code/go/go
+code/gen/gen

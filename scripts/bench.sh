@@ -3,12 +3,13 @@
 # Correctness runs first: a timing for a binary that fails the byte-compare is not a result.
 set -euo pipefail
 
-REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# scripts/ and code/ are siblings in both layouts this study ships in, so anchor on the script's parent rather than counting levels to a repo root that moves.
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ASSETS="${ASSETS:-/Users/noelruault/Downloads/1brc/1brc-assets}"
-BIN="$REPO/1brc/code/go/bin/1brc"
+BIN="$REPO/code/go/bin/1brc"
 LABEL="${1:-$(cd "$REPO" && git rev-parse --short HEAD)}"
 # shellcheck source=lib-provenance.sh
-source "$REPO/1brc/scripts/lib-provenance.sh"
+source "$REPO/scripts/lib-provenance.sh"
 
 FILES="${FILES:-10m 100m}"
 RUNS="${RUNS:-5}"
@@ -20,15 +21,15 @@ command -v hyperfine >/dev/null || { echo "bench: hyperfine not installed (brew 
 measure_lock_acquire "bench.sh $LABEL"
 trap measure_lock_release EXIT
 
-cd "$REPO/1brc/code/go"
+cd "$REPO/code/go"
 go build -o bin/1brc .
-ASSETS="$ASSETS" bash "$REPO/1brc/scripts/check-correctness.sh"
+ASSETS="$ASSETS" bash "$REPO/scripts/check-correctness.sh"
 
 require_quiet
 
-mkdir -p "$REPO/1brc/bench"
+mkdir -p "$REPO/bench"
 stamp="$(date -u +%Y-%m-%dT%H%M%SZ)"
-out="$REPO/1brc/bench/$stamp-$LABEL.txt"
+out="$REPO/bench/$stamp-$LABEL.txt"
 
 {
   echo "# bench $stamp"
