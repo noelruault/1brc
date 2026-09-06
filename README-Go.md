@@ -4,7 +4,50 @@ Aggregate 1,000,000,000 weather measurements (13,795,610,267 bytes) into per-sta
 
 This document is the Go arm of the study. It states what was built, what each experiment measured, and what the numbers support. Sibling documents will cover the same problem in other languages, so the method here is written to be re-run rather than re-argued.
 
-**Result: 1.202 s ± 0.032 s**, against a self-imposed 1.000 s target. The target is missed by 20.2%. The compute floor is 0.939 s, below the target, and the gap between the two is the read path.
+## Results, by what the implementation is allowed to use
+
+"Fastest Go" has no single answer, because the two published rules for this challenge disagree about what counts. Both are stated by people who did the work, so this study reports against both rather than picking the flattering one. All three rows are the **same binary**, same gate, same bracketed invocation.
+
+| tier | what it may use | wall clock | user CPU |
+|---|---|---:|---:|
+| **Unrestricted** | `unsafe` pointer walks, `F_NOCACHE` | **1.233 s** | 14.88 s |
+| **Idiomatic** (stdlib incl. `syscall`) | no `unsafe`, no asm, no cgo, no third-party | **1.388 s** | 17.10 s |
+| **Portable idiomatic** (no OS-specific calls) | also no `syscall`, no mmap | **1.904 s** | 17.65 s |
+
+Bracket on that invocation: 2.88% wall, 0.29% user CPU.
+
+**The two idiomatic bars, and why both exist.** [driquet](https://driquet.info/1brc-autoresearch/) sets it at *"idiomatic, stdlib-only Go. Goroutines and syscall are fair game; unsafe, assembly, cgo, and third-party dependencies are not."* [Ben Hoyt](https://benhoyt.com/writings/go-1brc/) sets it at *"portable Go using only the standard library: no assembly, no unsafe, and no memory-mapped files."* Our `F_NOCACHE` call is `syscall.Syscall(SYS_FCNTL, …)`, which is stdlib and needs no `unsafe`, so it passes the first bar and fails the second on **portability**: the constant is darwin-only. Turning it off skips the call entirely, and that arm uses no `syscall` package at all.
+
+**What each restriction costs, which is the useful part:**
+
+- **`unsafe` is worth 12.6% of wall and 14.9% of CPU.** Real, and smaller than its reputation. It buys the pointer walk; giving it up costs a seventh of the CPU.
+- **Portability costs more than `unsafe` does: another 37 points of wall for only 3.7 points of CPU.** Dropping `F_NOCACHE` barely changes the compute and moves the time into system CPU and waiting, exactly as the read floor predicts.
+- **Reaching for the stdlib map and a scalar parse costs +81.8% of CPU** (2.302 s), which is the rung both referenced write-ups climbed and which this study never shipped.
+
+**Target 1.000 s, missed on every tier.** The compute floor is 0.939 s, below the target, and the gap between floor and clock is the read path. Nothing below is an assembly result: the assembly arms were built, measured, and lost.
+
+## The finding that outlives the number
+
+**Roughly half the results in this document reverse on different hardware, and the useful work was finding out which half.**
+
+Every headline below is a verdict about one machine. The ones that flip are predictable from the hardware, which is what makes them worth writing down:
+
+| result | verdict here | what it turns on | where it should invert |
+|---|---|---|---|
+| mmap vs parallel `read()` | mmap 5.6× slower | Darwin's 16 KiB pages, 842,067 serial faults | a kernel with huge pages |
+| page cache vs uncached | page cache slower | the file is 53.5% of RAM | any machine with 64 GB |
+| hand-written NEON vs SWAR | SWAR wins | arm64 has no `PMOVMSKB` | x86-64, one instruction for the mask |
+| 4 row cursors | +2.93%, worse than 1 | register budget on this core | x86-64, where the same change is −8% |
+| oversubscribing workers | −7.49% at 15 cores | core count and read-stall ratio | 10 cores, where another study measured it losing |
+| custom table vs stdlib map | custom wins 15.8% | 413 keys, 0.3% load factor | 10,000 keys, where the map wins by 12.81% |
+
+And the converse carries the most weight. **A result that survives two different machines is about the mechanism rather than the laptop.** Dropping mmap for parallel `pread` was measured here at 5.6× and independently by [driquet](https://driquet.info/1brc-autoresearch/) at −52% on a different chip, different core count and a different file. That one generalises. The register-pressure results do not, and are not claimed to.
+
+Two practices follow, and they are the reason this study is shaped the way it is.
+
+**Nothing is ever deleted.** All 32 arms still ship behind their flags, including everything that lost, each carrying the number that killed it. `scripts/lab-suite.sh` re-ranks the whole set on any machine, and **the interesting output there is not the wall clock, it is which rows flip.**
+
+**A killed idea records the baseline it was killed against.** `PARKED.md` entries carry a runnable revive trigger, because a mechanism rejected against one bottleneck is not rejected, it is waiting. driquet's run demonstrates it from the other side: a SWAR scan rejected at 1.9% was re-tried four rounds later, after fixing I/O made compute visible, and accepted at −7.3%. Same code, opposite verdict, and the only thing that changed was what was in the way.
 
 ## The machine of record
 
@@ -279,6 +322,8 @@ Perfect hashing stays parked, on a mechanism rather than an estimate. Both cheap
 | validation in the parsed domain | 1.424 s | | 18.2% of CPU removed |
 | pointer walk | 1.233 s | 14.85 s | −13.49% user CPU |
 | **two row cursors** | **1.202 s** | **14.09 s** | −5.15% user CPU, four reproductions |
+
+Every row above is the unrestricted tier. The idiomatic tiers are measured separately at the top of this document: **1.388 s** stdlib-with-`syscall`, **1.904 s** fully portable.
 
 **Target 1.000 s. Missed by 20.2%.**
 

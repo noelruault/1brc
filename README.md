@@ -4,11 +4,25 @@ The [One Billion Row Challenge](https://github.com/gunnarmorling/1brc) run as a 
 
 One implementation per language, each with its own record. Same machine, same input, same method, so the numbers are comparable to each other even though none of them is comparable to a published leaderboard.
 
-| language | best measured | target | record |
-|---|---:|---:|---|
-| **Go** | **1.202 s ± 0.032** | 1.000 s | [README-Go.md](README-Go.md) |
-| Zig | not started | | |
-| JavaScript | not started | | |
+| language | unrestricted | idiomatic | portable idiomatic | record |
+|---|---:|---:|---:|---|
+| **Go** | **1.233 s** | **1.388 s** | **1.904 s** | [README-Go.md](README-Go.md) |
+| Zig | not started | | | |
+| JavaScript | not started | | | |
+
+Target 1.000 s, missed on every tier. Three numbers rather than one, because the two published rules for this challenge disagree about what an implementation may use, and picking one of them would be choosing the flattering answer.
+
+| tier | allowed | wall | user CPU |
+|---|---|---:|---:|
+| Unrestricted | `unsafe`, `F_NOCACHE` | 1.233 s | 14.88 s |
+| Idiomatic (stdlib incl. `syscall`) | no `unsafe`/asm/cgo/third-party | 1.388 s | 17.10 s |
+| Portable idiomatic | also no `syscall`, no mmap | 1.904 s | 17.65 s |
+
+All three are the same binary, the same correctness gate and one bracketed invocation (bracket 2.88% wall, 0.29% user CPU). [driquet](https://driquet.info/1brc-autoresearch/) rules that *goroutines and syscall are fair game* while `unsafe`, assembly, cgo and third-party are not; [Ben Hoyt](https://benhoyt.com/writings/go-1brc/) requires *portable Go using only the standard library: no assembly, no unsafe, and no memory-mapped files*. The `F_NOCACHE` call is stdlib `syscall` and needs no `unsafe`, so it passes the first bar and fails the second on portability, the constant being darwin-only.
+
+What each restriction costs is the useful part: **`unsafe` is worth 12.6% of wall**, portability another 37 points on top, and reaching for the stdlib map with a scalar parse **+81.8% of CPU**.
+
+The fastest arm measured, `-fold lanes`, reaches **1.202 s ± 0.032** but is not the shipped default: its ranges overlap the incumbent's, and a default changes here only on a disjoint win. None of these is an assembly result; those arms were built, measured, and lost.
 
 ## The two floors everything is measured against
 
