@@ -246,3 +246,25 @@ The prediction registered before the run allowed for exactly this: either anothe
 The same change is worth **−8% in a Rust implementation on x86-64**. That is a register-budget difference, not a contradiction, and it is why `-fold lanes4` stays shipped rather than deleted.
 
 The ILP direction is now **bounded, not open**: two cursors is the optimum here, and "more ILP" is no longer an available lever on this machine.
+
+## Experiment 13: what `update` is made of
+
+A perfect hash over 413 fixed keys is the obvious remaining idea, and published Rust work measures a 26% win from one. The profile attributes `(*table).update` 12.5-14% of CPU and `runtime.memequal` 8.8-9.9%, which looks like a 21-24% pot.
+
+No profile can settle it, because the probe, the key compare and the update arithmetic inline into one symbol. Three benchmark variants fold the identical access sequence into the identical slots, pinned by a test asserting the slot a variant writes is the slot `update` would have chosen:
+
+```
+full update                        8.34 ns/op
+probe + empty-slot check, no compare   1.78 ns/op
+direct index (no hash, probe, compare) 1.65 ns/op
+```
+
+**In isolation the probe is 0.13 ns and the key compare with its pointer chase is 6.56 ns, 79% of `update`.** Which reads as a strong case for perfect hashing.
+
+It is not, and that is the finding. The profile puts `update` at **1.76-1.97 ns/row in situ, 4.4× cheaper than the 8.34 ns measured alone.** The difference is memory-level parallelism: alone, `update` eats its cache miss with nothing to overlap; inside the fold loop that miss is covered by the scan and parse of neighbouring rows.
+
+This predicts a result already measured. A quotiented 32-byte entry removes exactly that pointer chase and measured **+5.34% of wall**. A cost that is 79% of a function in isolation and already hidden in place cannot be bought back; you only pay the arithmetic you add trying.
+
+**The general rule: a share measured in isolation is an upper bound on what removing it can buy, and the ratio between isolated and in-situ cost is the memory-level parallelism the surrounding loop provides for free.**
+
+Perfect hashing stays parked, on a mechanism rather than an estimate. Both cheap variants above are a **ceiling and not a proposal**: they delete the hash and the fallback branch a real perfect hash must keep.
