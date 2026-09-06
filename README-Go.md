@@ -109,3 +109,32 @@ Two rules follow, and both are refusals:
 **A cheaper input does not rank arms.** Seven strategy arms compared at 1.4 GB and at 13.8 GB disagreed **seven times out of seven**: four inverted outright, three vanished into overlapping ranges. At 1.4 GB nothing is I/O bound; at 13.8 GB everything is. The harness now refuses any file but the 1b one unless `--mechanism-only` is passed, and stamps the output `NOT A VERDICT`.
 
 Ask a harness to rank N copies of one thing before believing it about N different things. It costs 90 seconds.
+
+## Experiment 5: oversubscribe the workers
+
+**1.742 s → 1.613 s, −7.49%.** `runtime.NumCPU()` is the reflex worker count and it is wrong whenever a worker alternates blocking reads with compute: while it sits in `pread`, its core has nothing to run.
+
+```go
+// Workers block ~30% of their wall in pread, so extra runnable
+// goroutines cover the stall. Measured -7.49%; a plateau, not a peak.
+workers := runtime.NumCPU() * 4 / 3
+```
+
+20 and 30 workers did not separate, so the optimum is a plateau and the low end is the one to pin. Going the other way is expensive: dropping back to one worker per core later measured **+14.09%**, with parallel efficiency falling from 80.2% to 69.7%.
+
+A related mechanism turned out to be the same lever spent twice. A per-worker prefetch goroutine, filling buffer B while the fold runs on buffer A, is worth **0%** on top of oversubscription. On its own with one worker per core it recovers 72.5% of what oversubscription recovers, so the two are substitutes: both exist to give a core something to run while a read is outstanding.
+
+## Experiment 6: validate in the parsed domain
+
+**1.613 s → 1.424 s.** The format check was four to six dependent byte compares per row, behind an unpredictable three-way branch. A profile priced it at **18.2% of all CPU**, against a prediction of 3-8% that had been carried as an unmeasured line item for most of the study.
+
+The parse already produces the value. A legal temperature is one integer range test on a register that is already live.
+
+```go
+// Rejections fold into the same 8-byte word the parse reads, so the
+// shape is established from bits already in a register.
+v, next, ok := parseTempWordFrom(w)
+if !ok || v < -999 || v > 999 { return errBadRow }
+```
+
+The generalisation: **any validation whose predicate is expressible over the parsed value is being paid twice when it runs over the bytes.** Price it before assuming it is free.
