@@ -152,3 +152,29 @@ The mechanism is not mysterious once stated. The microbenchmark's baseline was a
 The rule that comes out of it: before quoting a delta forward, name the baseline it was measured against, and check the system you are about to apply it to contains that baseline. This fails independently of the scale trap in Experiment 4. A smaller input does not rank arms; a differently-shaped baseline does not either.
 
 Both arms remain shipped as `-kernel batch-swar` and `-kernel batch-neon`, because the transfer cost that killed them is an arm64 property.
+
+## Experiment 8: the pointer walk
+
+**1.424 s → 1.233 s ± 0.010 s**, user CPU down 13.49% for byte-identical output. The row loop walks the buffer with `unsafe.Add` instead of reslicing at every row.
+
+The ceiling was measured before the work: `unsafe` pointer walks were worth **4-16%** on the scan in isolation, and **reslicing recovers about half of that in safe Go**, because re-anchoring the slice lets the compiler drop the bounds check. Verify with `-gcflags=-d=ssa/check_bce` rather than assuming.
+
+One guard in that loop carries the entire over-read safety:
+
+```go
+// The ONLY thing bounding the load below. The incumbent's slice read
+// would panic if it were loosened; this one reads past the buffer in silence.
+if pos+sep+9 > n { break }
+```
+
+Related and measured: a Plan 9 assembly call costs **~1.93 ns** on arm64. That is most of a 14-byte row's budget, so assembly here is callable per chunk and never per row. It is also why the per-row NEON kernel could not win no matter how good the kernel was.
+
+## Experiment 9: the hash table, and a regime that inverts
+
+A prefix-hashed open-addressing table beats Go's built-in `map` by **15.8%** on the 413-station key set. On a 10,000-station stressor it **loses by 3.7%** in the same probe, and **12.81% of wall** end to end.
+
+The end-to-end gap is larger than the probe gap, and the reason is not the probe at all: the custom tables allocate **120 MiB** that the map never does, and system CPU drops 5.48% on an identical I/O path. Retention, not lookup.
+
+Two things follow. **The right structure is a property of the deployment, not of the code**, so the alternative stays behind `-table map` rather than being deleted. And a lookup microbenchmark measures the lookup while the deployment pays the retention.
+
+The 10k file itself needed a decision. Holding *rows* constant would produce a 57.09 GB input at 2.22× RAM, whose read floor alone is 3.12 s, answering a different question. Holding *bytes* constant gives 241.6M rows at 13.80 GB, which reproduces the memory regime the 1b file establishes. When you change a key regime, hold the memory regime.
