@@ -38,8 +38,10 @@ Every headline below is a verdict about one machine. The ones that flip are pred
 | page cache vs uncached | page cache slower | the file is 53.5% of RAM | any machine with 64 GB |
 | hand-written NEON vs SWAR | SWAR wins | arm64 has no `PMOVMSKB` | x86-64, one instruction for the mask |
 | 4 row cursors | +2.93%, worse than 1 | register budget on this core | x86-64, where the same change is −8% |
-| oversubscribing workers | −7.49% at 15 cores | core count and read-stall ratio | 10 cores, where another study measured it losing |
+| oversubscribing workers | −7.49% at 15 cores | core count and read-stall ratio | **measured inverted**: 2× is −3.21% here and +2.2% on a 10-core M5 |
 | custom table vs stdlib map | custom wins 15.8% | 413 keys, 0.3% load factor | 10,000 keys, where the map wins by 12.81% |
+
+The oversubscription row is the sharpest of these, because it is the only one where the inversion has been **measured rather than predicted**. Two studies ran the same experiment on the same generation of Apple silicon: 2× oversubscription measured **+2.2% on 10 cores** and **−3.21% on 15**. Opposite sign, and the only material difference is the core count. The mechanism is visible in the second channel: user CPU is flat to 0.86% across 15, 20, 24 and 30 workers, so the lever changes how much of the machine waits, never how much work it does.
 
 And the converse carries the most weight. **A result that survives two different machines is about the mechanism rather than the laptop.** Dropping mmap for parallel `pread` was measured here at 5.6× and independently by [driquet](https://driquet.info/1brc-autoresearch/) at −52% on a different chip, different core count and a different file. That one generalises. The register-pressure results do not, and are not claimed to.
 

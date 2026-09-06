@@ -1,0 +1,62 @@
+# experiment 2026-09-06T103052Z
+hypothesis: oversubscription multiplier: is the opposite verdict a different multiplier
+prediction: driquet measured 2x oversubscription at +2.2% on 10 cores; we measured NumCPU()*4/3 (20 on 15 cores, 1.33x) at -7.49%. If the verdicts agree and only the multiplier differs, 30 workers (2x here) loses to 20 while both beat 15. If 30 also wins, the two machines genuinely disagree.
+file:     measurements-1b.txt   runs: 5   warmup: 1   cooldown: 20s
+commit:   589800a84c6c5e3f3ef37a23b3ee797981908989 (DIRTY WORKING TREE)
+go:       go version go1.27.0 darwin/arm64
+machine:  Apple M5 Pro, hw.ncpu 15, 24 GiB, 26.5.2 arm64
+hyperfine: hyperfine 1.20.0
+power:    'Battery Power' 	35%; discharging; 5:14 remaining present: true
+load:     12:30  up 6 days,  2:49, 36 users, load averages: 4.43 3.96 3.23
+PROVISIONAL: measured on battery, spec.md:42 requires the headline on AC power
+
+$ w20.a: /Users/noelruault/go/src/github.com/noelruault/research/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+$ w15: /Users/noelruault/go/src/github.com/noelruault/research/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -workers 15 > /dev/null
+$ w24: /Users/noelruault/go/src/github.com/noelruault/research/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -workers 24 > /dev/null
+$ w30: /Users/noelruault/go/src/github.com/noelruault/research/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -workers 30 > /dev/null
+$ w20.b: /Users/noelruault/go/src/github.com/noelruault/research/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+
+Benchmark 1: w20.a
+  Time (mean ± σ):      1.293 s ±  0.046 s    [User: 14.902 s, System: 1.814 s]
+  Range (min … max):    1.262 s …  1.374 s    5 runs
+ 
+Benchmark 2: w15
+  Time (mean ± σ):      1.490 s ±  0.018 s    [User: 14.775 s, System: 1.833 s]
+  Range (min … max):    1.472 s …  1.512 s    5 runs
+ 
+Benchmark 3: w24
+  Time (mean ± σ):      1.290 s ±  0.042 s    [User: 14.819 s, System: 1.917 s]
+  Range (min … max):    1.238 s …  1.350 s    5 runs
+ 
+Benchmark 4: w30
+  Time (mean ± σ):      1.238 s ±  0.032 s    [User: 14.834 s, System: 1.884 s]
+  Range (min … max):    1.207 s …  1.287 s    5 runs
+ 
+Benchmark 5: w20.b
+  Time (mean ± σ):      1.265 s ±  0.019 s    [User: 14.873 s, System: 1.815 s]
+  Range (min … max):    1.238 s …  1.285 s    5 runs
+ 
+Summary
+  w30 ran
+    1.02 ± 0.03 times faster than w20.b
+    1.04 ± 0.04 times faster than w24
+    1.04 ± 0.05 times faster than w20.a
+    1.20 ± 0.03 times faster than w15
+
+== ledger row skeleton, paste into 07-experiment-ledger.md and write the verdict ==
+
+### E-NN — oversubscription multiplier: is the opposite verdict a different multiplier
+
+- **Idea:** 
+- **Prediction:** driquet measured 2x oversubscription at +2.2% on 10 cores; we measured NumCPU()*4/3 (20 on 15 cores, 1.33x) at -7.49%. If the verdicts agree and only the multiplier differs, 30 workers (2x here) loses to 20 while both beat 15. If 30 also wins, the two machines genuinely disagree.
+- **Measured, invocation 2026-09-06T103052Z (1b, 5 runs, one hyperfine invocation):**
+
+  | Command | Mean [s] | Min [s] | Max [s] | Relative |
+  |:---|---:|---:|---:|---:|
+  | `w20.a` | 1.293 ± 0.046 | 1.262 | 1.374 | 1.04 ± 0.05 |
+  | `w15` | 1.490 ± 0.018 | 1.472 | 1.512 | 1.20 ± 0.03 |
+  | `w24` | 1.290 ± 0.042 | 1.238 | 1.350 | 1.04 ± 0.04 |
+  | `w30` | 1.238 ± 0.032 | 1.207 | 1.287 | 1.00 |
+  | `w20.b` | 1.265 ± 0.019 | 1.238 | 1.285 | 1.02 ± 0.03 |
+
+- **Verdict:** 
