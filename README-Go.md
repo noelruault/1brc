@@ -268,3 +268,57 @@ This predicts a result already measured. A quotiented 32-byte entry removes exac
 **The general rule: a share measured in isolation is an upper bound on what removing it can buy, and the ratio between isolated and in-situ cost is the memory-level parallelism the surrounding loop provides for free.**
 
 Perfect hashing stays parked, on a mechanism rather than an estimate. Both cheap variants above are a **ceiling and not a proposal**: they delete the hash and the fallback branch a real perfect hash must keep.
+
+## Results
+
+| | wall clock | user CPU | note |
+|---|---:|---:|---|
+| naive skeleton | 26.1 ns/row | | correct, single-threaded |
+| v1, parallel uncached readers | 1.742 s | | the shape that stuck |
+| oversubscribed workers | 1.613 s | | −7.49% |
+| validation in the parsed domain | 1.424 s | | 18.2% of CPU removed |
+| pointer walk | 1.233 s | 14.85 s | −13.49% user CPU |
+| **two row cursors** | **1.202 s** | **14.09 s** | −5.15% user CPU, four reproductions |
+
+**Target 1.000 s. Missed by 20.2%.**
+
+The read floor is 0.754 s and the compute floor is 0.939 s, both below the target. The wall clock sits 32.0% above the compute floor, and that gap is 10.2% kernel byte-copy plus 11.7% idle cores.
+
+**Reaching 1.000 s from here requires −17.58% of user CPU**, holding today's overhead structure. The only pot that size is the separator scan at 41.6-43.6% of compute, and both board mechanisms for it are spent: fusing the hash into the scan measured +0.81%, and the batch tokenizer measured +9.8%/+10.4%. No third mechanism is proposed here, because none has been measured.
+
+### Comparison, and what it is worth
+
+Published Go results sit at 3.44 s and 14 s; a Rust implementation reaches 0.90 s on six cores. **None of these is comparable to 1.202 s**, in either direction.
+
+Those runs are page-cached or served from a RAM disk, so I/O is largely excluded, while every run here reads 13.8 GB off disk. This is 2026 silicon with 15 cores against 6- and 10-core machines from 2020 and 2021.
+
+On the one metric that survives the hardware difference, this implementation loses clearly: **~15.9 core-seconds against the Rust implementation's ~5.4**, roughly three times the CPU for the same work. The wall clock here is competitive because the machine has more cores.
+
+## Reproducing
+
+```bash
+bash 1brc/scripts/check-correctness.sh   # 12 upstream samples + 10k stations
+make bench                               # the winners, bracketed, 3 runs each
+make bench RUNS=10                       # verdict strength
+bash 1brc/scripts/lab-suite.sh           # all 12 groups, 32 arms
+```
+
+**Every arm ever built is still reachable by flag, losers included**: `-fold slice|hash|ptr|both|lanes|lanes4`, `-kernel row|batch-swar|batch-neon`, `-parse branchless|scalar|word`, `-table combined|split|quot|map`, `-io pread|mmap`, `-split static|cursor`, `-fill off|sync|ahead`. A verdict is a fact about the machine that took it, and half the kill list above turns on 16 KiB pages, one register file, and a file that happens to be 53.5% of this machine's RAM. `lab-suite.sh` re-ranks all 32 on any other box.
+
+A registry guard keeps that honest: adding a kernel without registering it fails the arm count, and deleting one the flag still accepts fails the parse. Every arm meets the same differential corpus, including inputs no generated data can produce, such as a separator inside a station name.
+
+The harness refuses rather than warns. It takes an exclusive lock, waits out a busy machine, stamps any run it could not verify as quiet, and voids every arm in an invocation whose incumbent slots disagree by more than 3%.
+
+## Full record
+
+- [`01-definition.md`](01-definition.md) — the rules, read from upstream's source rather than its prose
+- [`02-baseline.md`](02-baseline.md) — the physical floor
+- [`03-technique-recon.md`](03-technique-recon.md) — technique inventory from the top entries
+- [`04-asm-kernels.md`](04-asm-kernels.md) — four arm64 tokenizer kernels measured
+- [`05-go-techniques.md`](05-go-techniques.md) — unsafe, BCE, hashing, sharding
+- [`06-cross-disciplinary-transfer.md`](06-cross-disciplinary-transfer.md) — mechanisms borrowed from other fields
+- [`07-experiment-ledger.md`](07-experiment-ledger.md) — all 40 experiments, each with its prediction
+- [`08-method-what-worked.md`](08-method-what-worked.md) — the method retrospective
+- [`09-result.md`](09-result.md) — the closing statement
+- [`CORRECTIONS.md`](CORRECTIONS.md) — every published figure that a later measurement moved
+- [`PARKED.md`](PARKED.md) — nine ideas with the number that parked them and a runnable revive trigger
