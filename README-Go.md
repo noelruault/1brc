@@ -87,3 +87,25 @@ Splitting a file on byte offsets has four distinct off-by-one traps, and a singl
 One sentence fixes all four, and it belongs in a comment next to the code: **a worker owns every row that starts inside its range**, so it skips past the first newline unless its range starts at byte 0, and reads past its own end to finish the last row it owns. Finding them took a sweep of worker count × buffer size × split strategy × reader against the reference.
 
 Two mechanisms were killed at this stage. A cursor-based work-stealing split measured **+21%** against the static split, because dynamic scheduling costs more than the imbalance it removes when worker wall spread is only 1.03. And a branchless temperature parse **lost 15.2% in its microbenchmark and won 11.4% at a billion rows**, which is the first sign in this study that microbenchmarks and end-to-end runs disagree.
+
+## Experiment 4: calibrating the instrument
+
+At this point two invocations returned contradictory verdicts for the same flag: **−8.64%** in one, **+12.01%** in another. Rather than argue, run the null.
+
+Eight arms in one `hyperfine` invocation, all of them the same binary with the same flags:
+
+```
+1.660  1.690  1.745  1.772  1.796  1.811  1.841  2.010   (seconds)
+```
+
+Monotonically increasing, **+21.08% end to end**, with user CPU rising 16.65% for work that is provably identical. Every verdict pending at that moment was smaller than the spread of this null result.
+
+The fix is a 20 s cooldown before every timed run, plus naming the incumbent **first and last**. Under it the two bracket slots agree to **2.54%** and user CPU to **0.69%**.
+
+Two rules follow, and both are refusals:
+
+**A wide bracket is a refusal, not a correction factor.** Subtracting the measured per-slot drift from a contaminated invocation "recovered" +19.18% for a flag that a clean re-measure scored at **+0.06%**; five of that invocation's six margins vanished. A model of a confound is a detector, not a licence to subtract it.
+
+**A cheaper input does not rank arms.** Seven strategy arms compared at 1.4 GB and at 13.8 GB disagreed **seven times out of seven**: four inverted outright, three vanished into overlapping ranges. At 1.4 GB nothing is I/O bound; at 13.8 GB everything is. The harness now refuses any file but the 1b one unless `--mechanism-only` is passed, and stamps the output `NOT A VERDICT`.
+
+Ask a harness to rank N copies of one thing before believing it about N different things. It costs 90 seconds.
