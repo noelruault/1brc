@@ -138,3 +138,17 @@ if !ok || v < -999 || v > 999 { return errBadRow }
 ```
 
 The generalisation: **any validation whose predicate is expressible over the parsed value is being paid twice when it runs over the bytes.** Price it before assuming it is free.
+
+## Experiment 7: the batch tokenizer, and what a microbenchmark ranks
+
+The largest microbenchmark win in the study, and it does not survive contact with the binary.
+
+Four tokenizer kernels were built and measured on arm64. An 8-byte SWAR scan beat a per-row 16-byte NEON scan by 16.3-23.1%, with the cause measured directly: a **1.080 ns/row vector-to-general-register transfer**, which is most of a row's entire budget on this machine. A batch tokenizer in the shape used by high-throughput tokenizers, scanning a window and emitting a token stream, measured **−40.4%**, the biggest single win recorded anywhere in the study.
+
+Integrated end to end it measured **+9.8%** (pure Go) and **+10.4%** (calling into the assembly). A **50-point swing**.
+
+The mechanism is not mysterious once stated. The microbenchmark's baseline was a single-needle staged tokenizer writing a token stream. The binary's actual row loop is a dual-needle scan consuming the row in place. **The −40.4% was a true measurement against a program this study does not contain.**
+
+The rule that comes out of it: before quoting a delta forward, name the baseline it was measured against, and check the system you are about to apply it to contains that baseline. This fails independently of the scale trap in Experiment 4. A smaller input does not rank arms; a differently-shaped baseline does not either.
+
+Both arms remain shipped as `-kernel batch-swar` and `-kernel batch-neon`, because the transfer cost that killed them is an arm64 property.
