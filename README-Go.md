@@ -70,3 +70,20 @@ The tempting explanation is that the file exceeds what RAM can hold. That explan
 The cause is the fault path. Darwin uses 16 KiB pages, so the 1b file takes **842,067 faults**, and that path does not parallelise. `MADV_WILLNEED` makes it worse rather than better.
 
 **This is a property of this operating system, not of mmap.** On a kernel with transparent huge pages the fault count drops by three orders of magnitude and the ranking may invert. The arm stays shipped behind `-io mmap` for exactly that reason.
+
+## Experiment 3: v1, and the shape that stuck
+
+**1.742 s ± 0.019 s.** One `F_NOCACHE` `pread` reader per core over disjoint byte ranges, each worker folding into its own prefix-hashed linear-probe table, merged once at the end. 16.2× the naive skeleton at 100m rows.
+
+The structure has not changed since. Everything after this is a change to how a worker walks its buffer, never to how the work is divided.
+
+Splitting a file on byte offsets has four distinct off-by-one traps, and a single-configuration test finds none of them:
+
+- a range starting exactly **on** a row boundary
+- a range **shorter than one row**
+- a **buffer no larger than its range**
+- first-`;` versus first-`\n` when locating the boundary
+
+One sentence fixes all four, and it belongs in a comment next to the code: **a worker owns every row that starts inside its range**, so it skips past the first newline unless its range starts at byte 0, and reads past its own end to finish the last row it owns. Finding them took a sweep of worker count × buffer size × split strategy × reader against the reference.
+
+Two mechanisms were killed at this stage. A cursor-based work-stealing split measured **+21%** against the static split, because dynamic scheduling costs more than the imbalance it removes when worker wall spread is only 1.03. And a branchless temperature parse **lost 15.2% in its microbenchmark and won 11.4% at a billion rows**, which is the first sign in this study that microbenchmarks and end-to-end runs disagree.
