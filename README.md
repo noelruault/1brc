@@ -10,36 +10,15 @@ One implementation per language, each with its own record. Same machine, same in
 | Zig | not started | | | |
 | JavaScript | not started | | | |
 
-Target 1.000 s, missed on every tier. Three numbers rather than one, because the two published rules for this challenge disagree about what an implementation may use, and picking one of them would be choosing the flattering answer.
-
-| tier | allowed | wall | user CPU |
-|---|---|---:|---:|
-| Unrestricted | `unsafe`, `F_NOCACHE` | 1.233 s | 14.88 s |
-| Idiomatic (stdlib incl. `syscall`) | no `unsafe`/asm/cgo/third-party | 1.388 s | 17.10 s |
-| Portable idiomatic | also no `syscall`, no mmap | 1.904 s | 17.65 s |
-
-All three are the same binary, the same correctness gate and one bracketed invocation (bracket 2.88% wall, 0.29% user CPU). [driquet](https://driquet.info/1brc-autoresearch/) rules that *goroutines and syscall are fair game* while `unsafe`, assembly, cgo and third-party are not; [Ben Hoyt](https://benhoyt.com/writings/go-1brc/) requires *portable Go using only the standard library: no assembly, no unsafe, and no memory-mapped files*. The `F_NOCACHE` call is stdlib `syscall` and needs no `unsafe`, so it passes the first bar and fails the second on portability, the constant being darwin-only.
-
-What each restriction costs is the useful part: **`unsafe` is worth 12.6% of wall**, portability another 37 points on top, and reaching for the stdlib map with a scalar parse **+81.8% of CPU**.
-
-The fastest arm measured, `-fold lanes`, reaches **1.202 s ± 0.032** but is not the shipped default: its ranges overlap the incumbent's, and a default changes here only on a disjoint win. None of these is an assembly result; those arms were built, measured, and lost.
-
-## The two floors everything is measured against
-
-These are properties of the machine, not of any language, so every implementation here is priced against the same pair.
-
-| | |
-|---|---|
-| **Read floor** | **0.754 s**, 15 parallel uncached `pread`s over 13.8 GB |
-| **Compute floor (Go)** | **0.939 s**, 14.09 s of user CPU over 15 cores |
-
-The read floor is where an implementation would land if parsing were free. The compute floor is where it would land if no core ever waited. The Go implementation sits at 1.202 s, which is 32% above its own compute floor, and that gap is the kernel copying bytes plus cores blocked on the SSD.
+Three columns because the published rules for this challenge disagree about what an implementation may use, so each record reports against every bar from the same binary, the same correctness gate and one bracketed invocation. Each record states which rule set each of its numbers was measured against, and what the restriction cost.
 
 ## Machine of record
 
 Apple M5 Pro, 15 logical cores, 24 GB RAM, APPLE SSD AP1024Z, macOS 26.5.2 (Darwin 25.5.0) arm64.
 
 The input file is **53.5% of RAM**, so it cannot be held in page cache, and every run reads it from disk. `iostat` confirms 13.1 GB moving per run. Most published 1BRC numbers are page-cached or served from a RAM disk, which is a different measurement, so they are recorded here as facts about their own machines and never compared against these.
+
+That storage state sets the floor every implementation here is priced against, and it is a property of the machine rather than of any language: **0.754 s**, 15 parallel uncached `pread`s over 13.8 GB. It is where an implementation would land if parsing were free.
 
 ## Method
 
@@ -62,6 +41,8 @@ Rule 2 is not decoration. Eight identical arms in one invocation, same binary an
 - [`code/`](code), the implementation, the generator and the reference
 - [`scripts/`](scripts), the measurement harness
 
+Commit hashes cited inside the reports name the history those reports were written against and do not resolve in this checkout.
+
 ## Running it
 
 ```bash
@@ -75,8 +56,6 @@ The measurement files are generated, not committed. `code/gen` reproduces every 
 
 **Every arm ever built is still reachable by flag, including the ones that lost.** A verdict is a fact about the machine that took it: mmap lost 5.6× here because Darwin's 16 KiB pages give 842,067 faults on a path that does not parallelise, the page cache lost because the file is half of RAM, and four row cursors lost to register pressure that a wider register file may not have. `lab-suite.sh` re-ranks all 32 arms on any other machine, and the interesting result is which rows flip.
 
-## Provenance
-
-Extracted from [noelruault/research](https://github.com/noelruault/research) with `git subtree split`, preserving all 96 commits. Commit hashes cited inside the reports refer to that repository, since the split rewrote them here.
+## Licensing
 
 Third-party material and its licensing is recorded in [`LICENSES.md`](LICENSES.md). The station table and the twelve sample files come from gunnarmorling/1brc under Apache-2.0.
