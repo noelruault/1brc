@@ -84,4 +84,34 @@ for case in "${CASES[@]}"; do
   trap - EXIT
 done
 
+# 1brc.go is generated from code/go rather than written, so it is gated on both halves of that claim: that it is still what the generator emits, and that it answers identically to the package it came from.
+# The batch-neon arm is the one it cannot carry, since that kernel calls into the assembly module, so an ARM naming it skips this rather than failing it.
+if [[ ${ARM:-} == *batch-neon* ]]; then
+  echo "check-correctness: SKIP 1brc.go (no assembly module in a single file) [$ARM]"
+else
+  single=$(mktemp -d)
+  trap 'rm -rf "$single"' EXIT
+  python3 "$REPO/scripts/amalgamate.py" "$single/1brc.go"
+  if ! cmp -s "$single/1brc.go" "$REPO/1brc.go"; then
+    echo "check-correctness: FAIL 1brc.go is stale, re-run scripts/amalgamate.py" >&2
+    status=1
+  else
+    go build -o "$single/1brc" "$REPO/1brc.go"
+    single_status=0
+    for data in "$REPO"/testdata/upstream-samples/*.txt "$ASSETS/measurements-10m.txt" "$ASSETS/measurements-10k-stations-10m.txt"; do
+      [[ -f $data ]] || continue
+      if ! cmp -s <("$single/1brc" -in "$data" ${ARM_ARGV[@]+"${ARM_ARGV[@]}"}) <("$BIN" -in "$data" ${ARM_ARGV[@]+"${ARM_ARGV[@]}"}); then
+        echo "check-correctness: FAIL 1brc.go disagrees with code/go on $(basename "$data")${ARM:+ [$ARM]}" >&2
+        single_status=1
+        status=1
+      fi
+    done
+    if [[ $single_status == 0 ]]; then
+      echo "check-correctness: OK   1brc.go is current and matches code/go byte for byte${ARM:+ [$ARM]}"
+    fi
+  fi
+  rm -rf "$single"
+  trap - EXIT
+fi
+
 exit $status
