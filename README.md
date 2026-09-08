@@ -6,7 +6,7 @@ One implementation per language, each with its own record. Same machine, same in
 
 | language | unrestricted | idiomatic | portable idiomatic | record |
 |---|---:|---:|---:|---|
-| **Go** | **[1.233 s](1brc.go)** | **[1.388 s](1brc.go)** | **[1.904 s](1brc.go)** | [README-Go.md](README-Go.md) |
+| **Go** | **[1.233 s](go/unrestricted/1brc.go)** | **[1.388 s](go/idiomatic/1brc.go)** | **[1.904 s](go/portable/1brc.go)** | [README-Go.md](README-Go.md) |
 | Zig | not started | | | |
 | JavaScript | not started | | | |
 
@@ -32,14 +32,14 @@ Rule 2 is not decoration. Eight identical arms in one invocation, same binary an
 
 ## What is here
 
-- [`1brc.go`](1brc.go), the whole Go solution in one standard-library file, generated from `code/go` by [`scripts/amalgamate.py`](scripts/amalgamate.py)
+- [`go/`](go), one self-contained standard-library file per tier: [`unrestricted`](go/unrestricted/1brc.go), [`idiomatic`](go/idiomatic/1brc.go), [`portable`](go/portable/1brc.go)
 - [`README-Go.md`](README-Go.md), the Go record, experiment by experiment
 - [`00-overview.md`](00-overview.md), headline numbers and the study index
 - [`01-definition.md`](01-definition.md) through [`09-result.md`](09-result.md), the numbered reports, each with a `*-data.txt` companion holding the raw output and the command that produced it
 - [`07-experiment-ledger.md`](07-experiment-ledger.md), all 40 experiments with the prediction each one was registered against
 - [`CORRECTIONS.md`](CORRECTIONS.md), every published figure a later measurement moved, corrected at every site that carried it
 - [`PARKED.md`](PARKED.md), nine ideas with the number that parked them and a runnable trigger that would revive them
-- [`code/`](code), the implementation `1brc.go` is generated from, plus the generator and the slow reference
+- [`code/`](code), the flag-driven board the tiers were specialized out of, plus the generator and the slow reference
 - [`scripts/`](scripts), the measurement harness
 
 Commit hashes cited inside the reports name the history those reports were written against and do not resolve in this checkout.
@@ -47,7 +47,7 @@ Commit hashes cited inside the reports name the history those reports were writt
 ## Running it
 
 ```bash
-go run 1brc.go -in measurements.txt # the solution, one file, no go.mod needed
+go run go/unrestricted/1brc.go -in measurements.txt  # the solution, one file per tier, no go.mod needed
 bash scripts/check-correctness.sh   # upstream's 12 samples + a 10k-station stressor
 make -C code/go bench               # the winners, bracketed, 3 runs each
 make -C code/go bench RUNS=10       # verdict strength

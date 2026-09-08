@@ -84,33 +84,45 @@ for case in "${CASES[@]}"; do
   trap - EXIT
 done
 
-# 1brc.go is generated from code/go rather than written, so it is gated on both halves of that claim: that it is still what the generator emits, and that it answers identically to the package it came from.
-# The batch-neon arm is the one it cannot carry, since that kernel calls into the assembly module, so an ARM naming it skips this rather than failing it.
-if [[ ${ARM:-} == *batch-neon* ]]; then
-  echo "check-correctness: SKIP 1brc.go (no assembly module in a single file) [$ARM]"
+# The go/ tiers take no strategy flags, so an ARM says nothing about them and they are gated once, on their own, against the same reference outputs the package is gated against.
+# The idiomatic and portable files are derived from the unrestricted one, so being CURRENT is half of being correct: a stale file is a third implementation nobody is measuring.
+if [[ -n ${ARM:-} ]]; then
+  echo "check-correctness: SKIP go/ tiers (they take no arm flags) [$ARM]"
 else
-  single=$(mktemp -d)
-  trap 'rm -rf "$single"' EXIT
-  python3 "$REPO/scripts/amalgamate.py" "$single/1brc.go"
-  if ! cmp -s "$single/1brc.go" "$REPO/1brc.go"; then
-    echo "check-correctness: FAIL 1brc.go is stale, re-run scripts/amalgamate.py" >&2
-    status=1
-  else
-    go build -o "$single/1brc" "$REPO/1brc.go"
-    single_status=0
-    for data in "$REPO"/testdata/upstream-samples/*.txt "$ASSETS/measurements-10m.txt" "$ASSETS/measurements-10k-stations-10m.txt"; do
-      [[ -f $data ]] || continue
-      if ! cmp -s <("$single/1brc" -in "$data" ${ARM_ARGV[@]+"${ARM_ARGV[@]}"}) <("$BIN" -in "$data" ${ARM_ARGV[@]+"${ARM_ARGV[@]}"}); then
-        echo "check-correctness: FAIL 1brc.go disagrees with code/go on $(basename "$data")${ARM:+ [$ARM]}" >&2
-        single_status=1
+  tiers=$(mktemp -d)
+  trap 'rm -rf "$tiers"' EXIT
+  python3 "$REPO/scripts/derive-tiers.py" "$REPO/go/unrestricted/1brc.go" "$tiers/idiomatic.go" "$tiers/portable.go"
+  for tier in idiomatic portable; do
+    if ! cmp -s "$tiers/$tier.go" "$REPO/go/$tier/1brc.go"; then
+      echo "check-correctness: FAIL go/$tier/1brc.go is stale, re-run scripts/derive-tiers.py" >&2
+      status=1
+    fi
+  done
+
+  for tier in unrestricted idiomatic portable; do
+    go build -o "$tiers/$tier" "$REPO/go/$tier/1brc.go"
+    tier_status=0
+    for data in "$REPO"/testdata/upstream-samples/*.txt; do
+      if ! cmp -s <("$tiers/$tier" -in "$data") "${data%.txt}.out"; then
+        echo "check-correctness: FAIL go/$tier on $(basename "$data")" >&2
+        tier_status=1
         status=1
       fi
     done
-    if [[ $single_status == 0 ]]; then
-      echo "check-correctness: OK   1brc.go is current and matches code/go byte for byte${ARM:+ [$ARM]}"
+    for case in "${CASES[@]}"; do
+      data="$ASSETS/${case%%|*}"
+      [[ -f $data ]] || continue
+      if ! cmp -s <("$tiers/$tier" -in "$data") "$REPO/testdata/${case##*|}"; then
+        echo "check-correctness: FAIL go/$tier on ${case%%|*}" >&2
+        tier_status=1
+        status=1
+      fi
+    done
+    if [[ $tier_status == 0 ]]; then
+      echo "check-correctness: OK   go/$tier/1brc.go"
     fi
-  fi
-  rm -rf "$single"
+  done
+  rm -rf "$tiers"
   trap - EXIT
 fi
 
