@@ -8,13 +8,15 @@ This document is the Go arm of the study. It states what was built, what each ex
 
 "Fastest Go" has no single answer, because the two published rules for this challenge disagree about what counts. Both are stated by people who did the work, so this study reports against both rather than picking the flattering one. All three rows are the **same binary**, same gate, same bracketed invocation.
 
-| tier | what it may use | wall clock | user CPU |
-|---|---|---:|---:|
-| **Unrestricted** | `unsafe` pointer walks, `F_NOCACHE` | **1.233 s** | 14.88 s |
-| **Idiomatic** (stdlib incl. `syscall`) | no `unsafe`, no asm, no cgo, no third-party | **1.388 s** | 17.10 s |
-| **Portable idiomatic** (no OS-specific calls) | also no `syscall`, no mmap | **1.904 s** | 17.65 s |
+| tier | what it may use | how to run it | wall clock | user CPU |
+|---|---|---|---:|---:|
+| **[Unrestricted](code/go)** | `unsafe` pointer walks, `F_NOCACHE` | shipped default | **1.233 s** | 14.88 s |
+| **[Idiomatic](code/go)** (stdlib incl. `syscall`) | no `unsafe`, no asm, no cgo, no third-party | `-fold slice` | **1.388 s** | 17.10 s |
+| **[Portable idiomatic](code/go)** (no OS-specific calls) | also no `syscall`, no mmap | `-fold slice -nocache=false` | **1.904 s** | 17.65 s |
 
-Bracket on that invocation: 2.88% wall, 0.29% user CPU.
+Bracket on that invocation: 2.88% wall, 0.29% user CPU. Raw output in [`bench/2026-09-06T101734Z-idiomatic-vs-unrestricted.txt`](bench/2026-09-06T101734Z-idiomatic-vs-unrestricted.txt), which is stamped **PROVISIONAL**: it ran on battery, and this study reserves a headline for AC power.
+
+**The solution is [`code/go`](code/go)**, one package and one binary: [`main.go`](code/go/main.go) the flags and the measured defaults behind them, [`reader.go`](code/go/reader.go) the worker split and the parallel `pread` that sets `F_NOCACHE`, [`table.go`](code/go/table.go) the open-addressing table and the fold loops the tiers select between, [`kernel.go`](code/go/kernel.go) the SWAR delimiter scan and the branchless temperature parse, [`batch.go`](code/go/batch.go) the batch tokenizers.
 
 **The two idiomatic bars, and why both exist.** [driquet](https://driquet.info/1brc-autoresearch/) sets it at *"idiomatic, stdlib-only Go. Goroutines and syscall are fair game; unsafe, assembly, cgo, and third-party dependencies are not."* [Ben Hoyt](https://benhoyt.com/writings/go-1brc/) sets it at *"portable Go using only the standard library: no assembly, no unsafe, and no memory-mapped files."* Our `F_NOCACHE` call is `syscall.Syscall(SYS_FCNTL, …)`, which is stdlib and needs no `unsafe`, so it passes the first bar and fails the second on **portability**: the constant is darwin-only. Turning it off skips the call entirely, and that arm uses no `syscall` package at all.
 

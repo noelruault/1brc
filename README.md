@@ -6,11 +6,11 @@ One implementation per language, each with its own record. Same machine, same in
 
 | language | unrestricted | idiomatic | portable idiomatic | record |
 |---|---:|---:|---:|---|
-| **Go** | **1.233 s** | **1.388 s** | **1.904 s** | [README-Go.md](README-Go.md) |
+| **Go** | **[1.233 s](code/go)** | **[1.388 s](code/go)** | **[1.904 s](code/go)** | [README-Go.md](README-Go.md) |
 | Zig | not started | | | |
 | JavaScript | not started | | | |
 
-Three columns because the published rules for this challenge disagree about what an implementation may use, so each record reports against every bar from the same binary, the same correctness gate and one bracketed invocation. Each record states which rule set each of its numbers was measured against, and what the restriction cost.
+Three columns because the published rules for this challenge disagree about what an implementation may use, so each record reports against every bar from the same binary, the same correctness gate and one bracketed invocation. The Go row is **PROVISIONAL**, having been measured on battery. Each record states which rule set each of its numbers was measured against, and what the restriction cost.
 
 ## Machine of record
 

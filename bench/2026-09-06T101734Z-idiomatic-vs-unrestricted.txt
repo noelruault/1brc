@@ -1,0 +1,62 @@
+# experiment 2026-09-06T101734Z
+hypothesis: idiomatic vs unrestricted
+prediction: sweep: prices what unsafe, the F_NOCACHE syscall and the custom table are worth, by walking the shipped default back to stdlib-only Go one restriction at a time
+file:     measurements-1b.txt   runs: 5   warmup: 1   cooldown: 20s
+commit:   79d37b4b5c7fbecab16a71998c8aafbfcef7e5e6 (DIRTY WORKING TREE)
+go:       go version go1.27.0 darwin/arm64
+machine:  Apple M5 Pro, hw.ncpu 15, 24 GiB, 26.5.2 arm64
+hyperfine: hyperfine 1.20.0
+power:    'Battery Power' 	41%; discharging; 8:04 remaining present: true
+load:     12:17  up 6 days,  2:36, 36 users, load averages: 5.06 2.56 1.95
+PROVISIONAL: measured on battery, spec.md:42 requires the headline on AC power
+
+$ unrestricted.a: /Users/noelruault/go/src/github.com/noelruault/research/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+$ safe-walk: /Users/noelruault/go/src/github.com/noelruault/research/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -fold slice > /dev/null
+$ safe+pagecache: /Users/noelruault/go/src/github.com/noelruault/research/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -fold slice -nocache=false > /dev/null
+$ idiomatic: /Users/noelruault/go/src/github.com/noelruault/research/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt -fold slice -table map -parse scalar -nocache=false > /dev/null
+$ unrestricted.b: /Users/noelruault/go/src/github.com/noelruault/research/1brc/code/go/bin/1brc -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+
+Benchmark 1: unrestricted.a
+  Time (mean ± σ):      1.215 s ±  0.014 s    [User: 14.859 s, System: 1.717 s]
+  Range (min … max):    1.200 s …  1.235 s    5 runs
+ 
+Benchmark 2: safe-walk
+  Time (mean ± σ):      1.388 s ±  0.020 s    [User: 17.097 s, System: 1.707 s]
+  Range (min … max):    1.367 s …  1.411 s    5 runs
+ 
+Benchmark 3: safe+pagecache
+  Time (mean ± σ):      1.904 s ±  0.111 s    [User: 17.651 s, System: 3.606 s]
+  Range (min … max):    1.788 s …  2.082 s    5 runs
+ 
+Benchmark 4: idiomatic
+  Time (mean ± σ):      2.302 s ±  0.081 s    [User: 27.049 s, System: 2.710 s]
+  Range (min … max):    2.214 s …  2.419 s    5 runs
+ 
+Benchmark 5: unrestricted.b
+  Time (mean ± σ):      1.250 s ±  0.006 s    [User: 14.902 s, System: 1.734 s]
+  Range (min … max):    1.240 s …  1.255 s    5 runs
+ 
+Summary
+  unrestricted.a ran
+    1.03 ± 0.01 times faster than unrestricted.b
+    1.14 ± 0.02 times faster than safe-walk
+    1.57 ± 0.09 times faster than safe+pagecache
+    1.90 ± 0.07 times faster than idiomatic
+
+== ledger row skeleton, paste into 07-experiment-ledger.md and write the verdict ==
+
+### E-NN — idiomatic vs unrestricted
+
+- **Idea:** 
+- **Prediction:** sweep: prices what unsafe, the F_NOCACHE syscall and the custom table are worth, by walking the shipped default back to stdlib-only Go one restriction at a time
+- **Measured, invocation 2026-09-06T101734Z (1b, 5 runs, one hyperfine invocation):**
+
+  | Command | Mean [s] | Min [s] | Max [s] | Relative |
+  |:---|---:|---:|---:|---:|
+  | `unrestricted.a` | 1.215 ± 0.014 | 1.200 | 1.235 | 1.00 |
+  | `safe-walk` | 1.388 ± 0.020 | 1.367 | 1.411 | 1.14 ± 0.02 |
+  | `safe+pagecache` | 1.904 ± 0.111 | 1.788 | 2.082 | 1.57 ± 0.09 |
+  | `idiomatic` | 2.302 ± 0.081 | 2.214 | 2.419 | 1.90 ± 0.07 |
+  | `unrestricted.b` | 1.250 ± 0.006 | 1.240 | 1.255 | 1.03 ± 0.01 |
+
+- **Verdict:** 
