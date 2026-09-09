@@ -52,6 +52,7 @@ bash scripts/check-correctness.sh   # upstream's 12 samples + a 10k-station stre
 make -C code/go bench               # the winners, bracketed, 3 runs each
 make -C code/go bench RUNS=10       # verdict strength
 bash scripts/lab-suite.sh           # all 12 groups, 32 arms
+bash scripts/bench-tiers.sh         # re-measure the three tiers, bracketed; it refuses to rank a busy machine
 ```
 
 The measurement files are generated, not committed. `code/gen` reproduces every one byte for byte from its recorded seed and command.

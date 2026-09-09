@@ -23,6 +23,8 @@ usage: experiment.sh -i <hypothesis-id> -p <prediction> -a <name>=<flags> -a <na
       A sweep with no hypothesis is allowed only as -p 'sweep: <why>', which labels the row honestly.
   -a  one arm, name=flags. At least two: a delta needs something to be a delta from.
       The first arm should be the incumbent, because a percentage is relative to the arm being replaced.
+      name=@path/to/file.go is an arm that IS its own binary, built and gated like any other,
+      which is what puts a go/ tier and a code/go flag arm inside one invocation.
   -f  measurement file, default 1b. Anything else needs --mechanism-only (E-09).
   -c  cooldown seconds slept before every timed run, default 20 at 1b and 0 elsewhere.
       E-16: without it, eight IDENTICAL arms rise monotonically by 21% and the arm named
@@ -39,7 +41,7 @@ USAGE
 parse_args() {
   HYP=""; PRED=""; FILE="1b"; RUNS="${RUNS:-5}"; WARMUP="${WARMUP:-1}"; MECHANISM_ONLY=0
   COOLDOWN=""
-  ARM_NAMES=(); ARM_FLAGS=()
+  ARM_NAMES=(); ARM_FLAGS=(); ARM_SRC=(); ARM_BIN=()
   while (($#)); do
     case "$1" in
       -i) [[ $# -ge 2 ]] || die "-i needs a value"; HYP="$2"; shift 2 ;;
@@ -52,7 +54,14 @@ parse_args() {
         [[ $# -ge 2 ]] || die "-a needs a value"
         [[ $2 == *=* ]] || die "arm must be name=flags, got: $2"
         [[ ${2%%=*} != "" ]] || die "arm needs a name, got: $2"
-        ARM_NAMES+=("${2%%=*}"); ARM_FLAGS+=("${2#*=}"); shift 2 ;;
+        ARM_NAMES+=("${2%%=*}")
+        # An arm naming a standalone .go file is its own binary rather than a flag on the shared one, which is what puts the go/ tiers and code/go inside ONE invocation instead of two that cannot be subtracted.
+        if [[ ${2#*=} == @* ]]; then
+          ARM_SRC+=("${2#*=@}"); ARM_FLAGS+=("")
+        else
+          ARM_SRC+=(""); ARM_FLAGS+=("${2#*=}")
+        fi
+        shift 2 ;;
       --mechanism-only) MECHANISM_ONLY=1; shift ;;
       --help) usage; exit 0 ;;
       *) die "unknown argument: $1" ;;
@@ -81,8 +90,40 @@ validate() {
   [[ $COOLDOWN =~ ^[0-9]+$ ]] || die "cooldown ('$COOLDOWN') must be a whole number of seconds (-c); E-16: it is what stops an arm's slot deciding its rank."
 }
 
-# arm_command builds the timed command; the correctness check runs the same ARM_FLAGS entry, so a flag can never be measured without having been checked.
-arm_command() { echo "$BIN -in $DATA ${ARM_FLAGS[$1]} > /dev/null"; }
+# arm_command builds the timed command; the correctness check runs the same entry, so neither a flag nor a tier file can be measured without having been checked.
+arm_command() { echo "$(arm_bin "$1") -in $DATA ${ARM_FLAGS[$1]} > /dev/null"; }
+
+# arm_bin is the shared binary unless the arm named its own .go file, which is built once into the run's temp dir.
+arm_bin() { [[ -n ${ARM_SRC[$1]} ]] && echo "${ARM_BIN[$1]}" || echo "$BIN"; }
+
+# BRACKET_MAX is the spread between the two incumbent slots above which the invocation ranks nothing.
+# E-18 derived a slot correction from a spread like this and re-measurement falsified five of its six numbers (E-23), so the answer to a wide bracket is another invocation, never a correction factor.
+BRACKET_MAX="${BRACKET_MAX:-3.0}"
+
+# bracket_verdict reads the two slots named X.a and X.b out of hyperfine's export and says whether this invocation may be quoted at all.
+# The harness computes it rather than the reader, because a number nobody checked the bracket on is exactly the number that gets published.
+bracket_verdict() {
+  awk -v maxpct="$BRACKET_MAX" -F'|' '
+    /^\| `/ {
+      gsub(/[ `]/, "", $2); gsub(/ /, "", $3)
+      split($3, m, "±"); mean[$2] = m[1] + 0
+    }
+    END {
+      for (n in mean) {
+        if (n ~ /\.a$/) { base = substr(n, 1, length(n) - 2); a = mean[n]; b = mean[base ".b"] }
+      }
+      if (!base || !b) { print "\nBRACKET: not measured, no X.a and X.b slots in this invocation"; exit }
+      pct = (a > b ? a - b : b - a) / (a < b ? a : b) * 100
+      printf "\nBRACKET: %s.a %.3f s against %s.b %.3f s, %.2f%% apart\n", base, a, base, b, pct
+      # An epsilon, because a bracket of exactly the limit is inside it and (1.030-1.000)/1.000*100 lands at 3.0000000000000027.
+      if (pct > maxpct + 1e-9) {
+        printf "VOID: the bracket is wider than %s%%, so this invocation ranks NOTHING. Re-measure; a correction factor is what E-18 tried and E-23 falsified.\n", maxpct
+      } else {
+        printf "BRACKET OK: under %s%%, the arms between the slots may be quoted.\n", maxpct
+      }
+    }
+  ' "$1"
+}
 
 run() {
   DATA="$ASSETS/measurements-$FILE.txt"
@@ -92,7 +133,7 @@ run() {
   # Taken before the correctness gate, not after: those runs are themselves 15-core load, so holding the lock across them is what stops one experiment's checks landing inside another's timing.
   measure_lock_acquire "experiment.sh $HYP"
   # Installed with the lock, not with $md below, so an arm failing the correctness gate still releases it.
-  trap 'rm -f "$md"; measure_lock_release' EXIT
+  trap 'rm -f "$md"; rm -rf "${BINDIR:-}"; measure_lock_release' EXIT
 
   cd "$REPO/code/go"
   go build -o bin/1brc .
@@ -104,9 +145,18 @@ run() {
   fi
 
   local i
+  BINDIR="$(mktemp -d)"
   for ((i = 0; i < ${#ARM_NAMES[@]}; i++)); do
-    echo "experiment: correctness gate for arm '${ARM_NAMES[i]}' (${ARM_FLAGS[i]:-no flags})"
-    ARM="${ARM_FLAGS[i]}" ASSETS="$ASSETS" CASES_EXTRA="$extra" bash "$REPO/scripts/check-correctness.sh" \
+    ARM_BIN[i]=""
+    [[ -n ${ARM_SRC[i]} ]] || continue
+    [[ -f $REPO/${ARM_SRC[i]} ]] || die "arm '${ARM_NAMES[i]}' names ${ARM_SRC[i]}, which is not a file in this repository"
+    ARM_BIN[i]="$BINDIR/${ARM_NAMES[i]}"
+    go build -o "${ARM_BIN[i]}" "$REPO/${ARM_SRC[i]}" || die "arm '${ARM_NAMES[i]}' does not build"
+  done
+
+  for ((i = 0; i < ${#ARM_NAMES[@]}; i++)); do
+    echo "experiment: correctness gate for arm '${ARM_NAMES[i]}' (${ARM_SRC[i]:-${ARM_FLAGS[i]:-no flags}})"
+    BIN="$(arm_bin "$i")" ARM="${ARM_FLAGS[i]}" ASSETS="$ASSETS" CASES_EXTRA="$extra" bash "$REPO/scripts/check-correctness.sh" \
       || die "arm '${ARM_NAMES[i]}' fails the byte-compare. spec.md: that is a bug, not a result."
   done
 
@@ -138,6 +188,8 @@ run() {
   echo >> "$out"
 
   hyperfine "${args[@]}" 2>&1 | tee -a "$out"
+
+  bracket_verdict "$md" | tee -a "$out"
 
   {
     echo
@@ -276,6 +328,26 @@ self_test() {
   else echo "FAIL: provenance_header did not stamp a busy machine" >&2; fails=$((fails + 1)); fi
   if [[ $(QUIET_LOAD=999 provenance_header "$REPO") != *"NOT QUIET"* ]]; then echo "ok: a header taken on a quiet machine carries no stamp"
   else echo "FAIL: provenance_header stamped a quiet machine" >&2; fails=$((fails + 1)); fi
+
+  # The bracket verdict is pinned on real shapes, because it is the one check that decides whether an invocation may be quoted at all.
+  bracket_case() {
+    local desc="$1" want="$2" a="$3" b="$4" md
+    md="$(mktemp)"
+    {
+      echo '| Command | Mean [s] | Min [s] | Max [s] | Relative |'
+      echo '|:---|---:|---:|---:|---:|'
+      echo "| \`inc.a\` | $a ± 0.030 | 1.4 | 1.5 | 1.00 |"
+      echo '| `arm` | 1.786 ± 0.145 | 1.6 | 2.0 | 1.21 |'
+      [[ $b == none ]] || echo "| \`inc.b\` | $b ± 0.020 | 1.4 | 1.5 | 1.01 |"
+    } > "$md"
+    if [[ $(bracket_verdict "$md") == *"$want"* ]]; then echo "ok: $desc"
+    else echo "FAIL: $desc (wanted '$want', got '$(bracket_verdict "$md")')" >&2; fails=$((fails + 1)); fi
+    rm -f "$md"
+  }
+  bracket_case "a 7.8% bracket voids the invocation" "VOID" 1.479 1.594
+  bracket_case "a 0.3% bracket may be quoted" "BRACKET OK" 1.315 1.319
+  bracket_case "a bracket exactly at the line may be quoted" "BRACKET OK" 1.000 1.030
+  bracket_case "an invocation with no closing slot claims no bracket" "no X.a and X.b slots" 1.479 none
 
   if ((fails)); then echo "experiment --self-test: $fails FAILED" >&2; return 1; fi
   echo "experiment --self-test: all checks passed"

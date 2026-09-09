@@ -6,7 +6,8 @@ set -euo pipefail
 # Anchored on the script's own parent because scripts/ and code/ are siblings in both layouts this study ships in: inside the research repo, and split out as a standalone repository where the 1brc/ prefix is gone.
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ASSETS="${ASSETS:-/Users/noelruault/Downloads/1brc/1brc-assets}"
-BIN="$REPO/code/go/bin/1brc"
+# BIN is overridable so experiment.sh can gate a tier binary through this same oracle instead of a second copy of it; an override brings its own build, and the go/ block below then belongs to whoever asked for it rather than to every arm.
+BIN="${BIN:-$REPO/code/go/bin/1brc}"
 # ARM carries an experiment arm's flags so a variant is byte-compared before it is ever timed.
 read -r -a ARM_ARGV <<< "${ARM:-}"
 
@@ -20,8 +21,10 @@ CASES=(
 read -r -a EXTRA_CASES <<< "${CASES_EXTRA:-}"
 CASES+=(${EXTRA_CASES[@]+"${EXTRA_CASES[@]}"})
 
-cd "$REPO/code/go"
-go build -o bin/1brc .
+if [[ $BIN == "$REPO/code/go/bin/1brc" ]]; then
+  cd "$REPO/code/go"
+  go build -o bin/1brc .
+fi
 
 status=0
 
@@ -86,8 +89,8 @@ done
 
 # The go/ tiers take no strategy flags, so an ARM says nothing about them and they are gated once, on their own, against the same reference outputs the package is gated against.
 # The idiomatic and portable files are derived from the unrestricted one, so being CURRENT is half of being correct: a stale file is a third implementation nobody is measuring.
-if [[ -n ${ARM:-} ]]; then
-  echo "check-correctness: SKIP go/ tiers (they take no arm flags) [$ARM]"
+if [[ -n ${ARM:-} || $BIN != "$REPO/code/go/bin/1brc" ]]; then
+  echo "check-correctness: SKIP go/ tiers (this invocation is gating one binary${ARM:+, arm $ARM})"
 else
   tiers=$(mktemp -d)
   trap 'rm -rf "$tiers"' EXIT

@@ -1,0 +1,54 @@
+# experiment 2026-09-09T151856Z
+hypothesis: go tier files
+prediction: sweep: the tables quote 1.233/1.388/1.904 from code/go flag arms, so re-measure the three tier files that now carry those numbers
+file:     measurements-1b.txt   runs: 5   warmup: 1   cooldown: 20s
+commit:   7b7e0f0c0edd2a08573d389834cc32d532acaf1c (DIRTY WORKING TREE)
+go:       go version go1.27.0 darwin/arm64
+machine:  Apple M5 Pro, hw.ncpu 15, 24 GiB, 26.5.2 arm64
+hyperfine: hyperfine 1.20.0
+power:    'AC Power' 	100%; charged; 0:00 remaining present: true
+load:     17:21  up 9 days,  7:40, 46 users, load averages: 5.52 6.04 5.10
+
+$ unrestricted.a: /var/folders/rt/blcbjj3n7rv7yldtm5zrtfhm0000gn/T/tmp.1pXZPpxxw4/unrestricted.a -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+$ idiomatic: /var/folders/rt/blcbjj3n7rv7yldtm5zrtfhm0000gn/T/tmp.1pXZPpxxw4/idiomatic -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+$ portable: /var/folders/rt/blcbjj3n7rv7yldtm5zrtfhm0000gn/T/tmp.1pXZPpxxw4/portable -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+$ unrestricted.b: /var/folders/rt/blcbjj3n7rv7yldtm5zrtfhm0000gn/T/tmp.1pXZPpxxw4/unrestricted.b -in /Users/noelruault/Downloads/1brc/1brc-assets/measurements-1b.txt  > /dev/null
+
+Benchmark 1: unrestricted.a
+  Time (mean ± σ):      1.479 s ±  0.030 s    [User: 15.929 s, System: 1.984 s]
+  Range (min … max):    1.433 s …  1.517 s    5 runs
+ 
+Benchmark 2: idiomatic
+  Time (mean ± σ):      1.786 s ±  0.145 s    [User: 18.621 s, System: 2.063 s]
+  Range (min … max):    1.625 s …  2.021 s    5 runs
+ 
+Benchmark 3: portable
+  Time (mean ± σ):      2.404 s ±  0.053 s    [User: 19.094 s, System: 3.995 s]
+  Range (min … max):    2.349 s …  2.489 s    5 runs
+ 
+Benchmark 4: unrestricted.b
+  Time (mean ± σ):      1.594 s ±  0.203 s    [User: 16.128 s, System: 2.054 s]
+  Range (min … max):    1.435 s …  1.898 s    5 runs
+ 
+Summary
+  unrestricted.a ran
+    1.08 ± 0.14 times faster than unrestricted.b
+    1.21 ± 0.10 times faster than idiomatic
+    1.63 ± 0.05 times faster than portable
+
+== ledger row skeleton, paste into 07-experiment-ledger.md and write the verdict ==
+
+### E-NN — go tier files
+
+- **Idea:** 
+- **Prediction:** sweep: the tables quote 1.233/1.388/1.904 from code/go flag arms, so re-measure the three tier files that now carry those numbers
+- **Measured, invocation 2026-09-09T151856Z (1b, 5 runs, one hyperfine invocation):**
+
+  | Command | Mean [s] | Min [s] | Max [s] | Relative |
+  |:---|---:|---:|---:|---:|
+  | `unrestricted.a` | 1.479 ± 0.030 | 1.433 | 1.517 | 1.00 |
+  | `idiomatic` | 1.786 ± 0.145 | 1.625 | 2.021 | 1.21 ± 0.10 |
+  | `portable` | 2.404 ± 0.053 | 2.349 | 2.489 | 1.63 ± 0.05 |
+  | `unrestricted.b` | 1.594 ± 0.203 | 1.435 | 1.898 | 1.08 ± 0.14 |
+
+- **Verdict:** 
